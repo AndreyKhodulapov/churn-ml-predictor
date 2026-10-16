@@ -28,6 +28,13 @@ A training dataset row has the same fields plus the `churn` label (`0` or `1`).
 Requires Python 3.11+.
 
 ```bash
+make install   # create .venv and install dependencies
+make run       # start the service with auto-reload
+```
+
+Without make:
+
+```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -52,6 +59,9 @@ curl -X POST http://127.0.0.1:8000/predict \
 ## Tests
 
 ```bash
+make test
+
+# or manually
 pip install -r requirements-dev.txt
 pytest                      # all tests
 pytest tests/unit           # schema validation
