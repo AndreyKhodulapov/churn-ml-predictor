@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from src.routers import health, prediction
+from src.routers import health, prediction, dataset
 
 app = FastAPI(
     title="Churn ML Predictor",
@@ -9,3 +9,4 @@ app = FastAPI(
 )
 app.include_router(health.router)
 app.include_router(prediction.router)
+app.include_router(dataset.router)

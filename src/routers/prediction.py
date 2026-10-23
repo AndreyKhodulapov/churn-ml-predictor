@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from src.schemas import FeatureVectorChurn
 
-router = APIRouter(tags=["prediction"])
+router = APIRouter(tags=["Prediction"])
 
 
 @router.post("/predict")
