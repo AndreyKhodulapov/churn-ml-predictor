@@ -1,11 +1,12 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from src.core.constants import DeviceType, PaymentMethod, Region
+from src.schemas.base import BaseSchema
 
 
-class FeatureVectorChurn(BaseModel):
+class FeatureVectorChurn(BaseSchema):
     """Customer features the churn model makes a prediction from."""
 
     monthly_fee: float = Field(ge=0, examples=[29.99])
