@@ -78,6 +78,7 @@ async def test_info_describes_default_dataset(client):
             "0": {"count": 1597, "share": 0.7985},
             "1": {"count": 403, "share": 0.2015},
         },
+        "target_missing": {"count": 0, "share": 0.0},
     }
 
 
@@ -91,6 +92,21 @@ async def test_info_reflects_served_dataset(client, small_dataset):
         "0": {"count": 2, "share": 2 / 3},
         "1": {"count": 1, "share": 1 / 3},
     }
+
+
+async def test_info_reports_unlabeled_rows_apart_from_classes(client, write_csv, csv_header, make_csv_row):
+    rows = [make_csv_row(0), make_csv_row(1).removesuffix("1")]
+    processor = DatasetProcessor(write_csv("\n".join([csv_header, *rows]) + "\n"))
+    processor.load()
+    app.dependency_overrides[get_dataset] = lambda: processor
+
+    response = await client.get("/dataset/info")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["target_distribution"] == {"0": {"count": 1, "share": 0.5}}
+    assert body["target_missing"] == {"count": 1, "share": 0.5}
 
 
 async def test_info_does_not_depend_on_preview_being_called_first(client):

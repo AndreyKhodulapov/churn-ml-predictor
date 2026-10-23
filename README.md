@@ -86,9 +86,13 @@ curl http://127.0.0.1:8000/dataset/info
   "target_distribution": {
     "0": {"count": 1597, "share": 0.7985},
     "1": {"count": 403, "share": 0.2015}
-  }
+  },
+  "target_missing": {"count": 0, "share": 0.0}
 }
 ```
+
+`target_missing` counts rows without a `churn` label. They are not a class, so `target_distribution` leaves them out
+and its shares, taken over all rows, sum to less than 1 when such rows exist.
 
 ## Tests
 
