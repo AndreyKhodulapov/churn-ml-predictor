@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 from pydantic import ValidationError
 
-from src.core.constants import DATASET_PATH
+from src.core.constants import DATASET_PATH, TARGET_COLUMN
 from src.core.exceptions import DatasetLoadError
 from src.schemas.dataset import ClassDistribution, DatasetInfo, DatasetRowChurn
 from src.services.utils import class_distribution
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class DatasetProcessor:
-    def __init__(self, dataset_path: Path = DATASET_PATH, target_column: str = "churn") -> None:
+    def __init__(self, dataset_path: Path = DATASET_PATH, target_column: str = TARGET_COLUMN) -> None:
         self.dataset_path = dataset_path
         self.target_column = target_column
         self._df: pd.DataFrame | None = None
