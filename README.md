@@ -4,8 +4,18 @@ A FastAPI service that predicts customer churn: whether a customer will leave
 the service next month (`churn = 1`) or stay (`churn = 0`), based on their
 billing, usage and support history.
 
-Current state: the API skeleton and the input schemas are in place. `POST /predict`
-validates a customer's features and echoes them back until a model is trained.
+Current state: the API validates customer features and serves the training
+dataset. `POST /predict` echoes the validated features back until a model is
+trained.
+
+## Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | health message |
+| POST | `/predict` | validate customer features (echoed back for now) |
+| GET | `/dataset/preview?n=5` | first `n` rows of the training dataset, `1 <= n <= 100` |
+| GET | `/dataset/info` | row and column counts, feature names, churn class distribution |
 
 ## Features
 
@@ -22,6 +32,12 @@ validates a customer's features and echoes them back until a model is trained.
 | `autopay_enabled` | int | `0` or `1` |
 
 A training dataset row has the same fields plus the `churn` label (`0` or `1`).
+
+## Dataset
+
+The training data lives in `data/churn_dataset.csv`. It is loaded and
+validated once at startup: if the file is missing or a row does not match the
+schema, the service fails to start and logs the reason.
 
 ## Run
 
@@ -46,7 +62,7 @@ Then open:
 - http://127.0.0.1:8000/ - health message
 - http://127.0.0.1:8000/docs - interactive API docs (Swagger UI)
 
-Example request:
+Example requests:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/predict \
@@ -54,6 +70,24 @@ curl -X POST http://127.0.0.1:8000/predict \
   -d '{"monthly_fee": 29.99, "usage_hours": 42.5, "support_requests": 1,
        "account_age_months": 18, "failed_payments": 0, "region": "europe",
        "device_type": "mobile", "payment_method": "card", "autopay_enabled": 1}'
+
+curl "http://127.0.0.1:8000/dataset/preview?n=3"
+curl http://127.0.0.1:8000/dataset/info
+```
+
+`/dataset/info` response for the bundled dataset:
+
+```json
+{
+  "row_count": 2000,
+  "column_count": 10,
+  "feature_names": ["monthly_fee", "usage_hours", "support_requests", "account_age_months",
+                    "failed_payments", "region", "device_type", "payment_method", "autopay_enabled"],
+  "target_distribution": {
+    "0": {"count": 1597, "share": 0.7985},
+    "1": {"count": 403, "share": 0.2015}
+  }
+}
 ```
 
 ## Tests
@@ -64,7 +98,7 @@ make test
 # or manually
 pip install -r requirements-dev.txt
 pytest                      # all tests
-pytest tests/unit           # schema validation
+pytest tests/unit           # schemas and dataset service
 pytest tests/integration    # HTTP API via httpx.AsyncClient
 ruff check .
 ```
@@ -72,11 +106,14 @@ ruff check .
 ## Project layout
 
 ```
+data/
+└── churn_dataset.csv  # training dataset
 src/
-├── main.py            # FastAPI app, router registration
-├── schemas.py         # Pydantic models of features and dataset rows
-├── constants.py       # allowed values of categorical features
-└── routers/           # HTTP endpoints
+├── main.py            # FastAPI app, startup, router registration
+├── core/              # constants, exceptions, error handlers
+├── routers/           # HTTP endpoints
+├── services/          # dataset loading and statistics
+└── schemas/           # Pydantic models of features, dataset rows and responses
 tests/
 ├── unit/
 └── integration/
