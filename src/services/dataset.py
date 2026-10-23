@@ -7,7 +7,8 @@ from pydantic import ValidationError
 
 from src.core.constants import DATASET_PATH
 from src.core.exceptions import DatasetLoadError
-from src.schemas.dataset import ClassDistribution, DatasetInfo, DatasetRowChurn
+from src.schemas.dataset import DatasetInfo, DatasetRowChurn
+from src.services.utils import class_distribution
 
 logger = logging.getLogger(__name__)
 
@@ -43,15 +44,11 @@ class DatasetProcessor:
 
     def get_info(self) -> DatasetInfo:
         df = self._ensure_loaded()
-        counts = df[self.target_column].value_counts().sort_index()
         return DatasetInfo(
             row_count=len(df),
             column_count=len(df.columns),
             feature_names=[str(column) for column in df.columns if column != self.target_column],
-            target_distribution={
-                int(label): ClassDistribution(count=int(count), share=count / len(df))
-                for label, count in zip(counts.index.tolist(), counts.tolist())
-            },
+            target_distribution=class_distribution(df[self.target_column]),
         )
 
     def _validate_rows(self, df: pd.DataFrame) -> list[DatasetRowChurn]:
