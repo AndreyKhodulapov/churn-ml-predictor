@@ -1,7 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
-from src.schemas import DatasetRowChurn, FeatureVectorChurn
+from src.schemas.dataset import DatasetRowChurn
+from src.schemas.prediction import FeatureVectorChurn
 
 
 def test_feature_vector_accepts_valid_customer(customer_features):

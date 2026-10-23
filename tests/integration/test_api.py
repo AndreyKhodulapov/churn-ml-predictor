@@ -1,4 +1,4 @@
-from src.schemas import FeatureVectorChurn
+from src.schemas.prediction import FeatureVectorChurn
 
 
 async def test_root_reports_service_is_running(client):

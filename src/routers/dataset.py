@@ -1,10 +1,16 @@
-from fastapi import APIRouter
+from typing import Annotated
 
-from src.dataset_processor import DATASET
+from fastapi import APIRouter, Depends, Query
+
+from src.schemas.dataset import DatasetRowChurn
+from src.services.dataset import get_dataset
 
 router = APIRouter(tags=["Dataset"], prefix="/dataset")
 
 
 @router.get("/preview")
-async def get_preview(row_number: int = 5):
-    return DATASET[:row_number]
+def get_preview(
+    dataset: Annotated[list[DatasetRowChurn], Depends(get_dataset)],
+    n: Annotated[int, Query(ge=1, le=100, description="Number of rows to return from the top of the dataset")] = 5,
+) -> list[DatasetRowChurn]:
+    return dataset[:n]

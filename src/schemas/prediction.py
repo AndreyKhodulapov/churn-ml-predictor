@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from src.constants import DeviceType, PaymentMethod, Region
+from src.core.constants import DeviceType, PaymentMethod, Region
 
 
 class FeatureVectorChurn(BaseModel):
@@ -17,9 +17,3 @@ class FeatureVectorChurn(BaseModel):
     device_type: DeviceType
     payment_method: PaymentMethod
     autopay_enabled: Literal[0, 1]
-
-
-class DatasetRowChurn(FeatureVectorChurn):
-    """A labeled row of the training dataset: 1 - the customer left, 0 - stayed."""
-
-    churn: Literal[0, 1]
