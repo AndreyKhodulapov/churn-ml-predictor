@@ -1,11 +1,21 @@
 import logging
-from typing import NamedTuple
+from functools import lru_cache
+from typing import NamedTuple, cast
 
 import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
+from sklearn.model_selection import train_test_split
 
-from src.core.constants import BINARY_FEATURES, CATEGORICAL_FEATURES, NUMERIC_FEATURES, TARGET_COLUMN
+from src.core.constants import (
+    BINARY_FEATURES,
+    CATEGORICAL_FEATURES,
+    NUMERIC_FEATURES,
+    RANDOM_STATE,
+    TARGET_COLUMN,
+    TEST_SIZE,
+)
+from src.services.dataset import get_dataset
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +25,13 @@ class PreparedData(NamedTuple):
     y: pd.Series
     numeric_features: tuple[str, ...]
     categorical_features: tuple[str, ...]
+
+
+class SplitData(NamedTuple):
+    X_train: pd.DataFrame
+    X_test: pd.DataFrame
+    y_train: pd.Series
+    y_test: pd.Series
 
 
 def prepare_data(df: pd.DataFrame) -> PreparedData:
@@ -60,3 +77,37 @@ def build_imputer(numeric_features: tuple[str, ...], categorical_features: tuple
     # Keep a DataFrame with the original column names instead of a bare numpy array.
     imputer.set_output(transform="pandas")
     return imputer
+
+
+def fill_data_gaps(
+    split: SplitData, numeric_features: tuple[str, ...], categorical_features: tuple[str, ...]
+) -> tuple[SplitData, ColumnTransformer]:
+    """Fill feature gaps in both parts with statistics of the train part; the fitted imputer is returned too."""
+    X_train, X_test, y_train, y_test = split
+    imputer = build_imputer(numeric_features, categorical_features)
+    # set_output(transform="pandas") makes both calls return a DataFrame; sklearn's annotations do not know it.
+    X_train = cast(pd.DataFrame, imputer.fit_transform(X_train))  # train on the train part (fitting)
+    X_test = cast(pd.DataFrame, imputer.transform(X_test))  # only fill gaps in the test part (no leak!)
+
+    return SplitData(X_train, X_test, y_train, y_test), imputer
+
+
+def split_data(prepared: PreparedData) -> SplitData:
+    """Split into train and test keeping the churn share of the whole dataset in both parts; gaps stay as they are."""
+    return SplitData(
+        *train_test_split(
+            prepared.X,
+            prepared.y,
+            test_size=TEST_SIZE,
+            random_state=RANDOM_STATE,
+            stratify=prepared.y,  # for unbalanced data, at least 2 rows of each class in dataset!
+        )
+    )
+
+
+@lru_cache
+def get_split() -> SplitData:
+    """Prepare, split and fill the default dataset once and reuse the result for every request."""
+    prepared = prepare_data(get_dataset().get_dataframe())
+    split, _ = fill_data_gaps(split_data(prepared), prepared.numeric_features, prepared.categorical_features)
+    return split
