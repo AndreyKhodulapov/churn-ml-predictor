@@ -3,7 +3,7 @@ import logging
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from src.core.exceptions import DatasetLoadError
+from src.core.exceptions import DatasetLoadError, DatasetNotTrainableError
 from src.main import app, lifespan
 from src.services.dataset import get_dataset
 
@@ -75,4 +75,17 @@ async def test_startup_survives_unavailable_dataset(monkeypatch, caplog):
         async with lifespan(app):
             pass
 
-    assert "Starting without a dataset: Dataset file not found: /missing.csv" in caplog.text
+    assert "Starting without a usable dataset: Dataset file not found: /missing.csv" in caplog.text
+
+
+async def test_startup_survives_dataset_it_cannot_train_on(monkeypatch, caplog):
+    def untrainable_split():
+        raise DatasetNotTrainableError("Dataset has no labeled rows")
+
+    monkeypatch.setattr("src.main.get_split", untrainable_split)
+
+    with caplog.at_level(logging.WARNING):
+        async with lifespan(app):
+            pass
+
+    assert "Starting without a usable dataset: Dataset has no labeled rows" in caplog.text

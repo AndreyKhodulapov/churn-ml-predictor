@@ -62,5 +62,9 @@ Short notes on reading, validating and serving a tabular dataset.
 - An expected failure gets its own handler and status: `DatasetLoadError`
   becomes `503` ("try again later"), not `500` ("bug in the service").
   A handler registered for a specific class wins over the `Exception` one.
+- A dataset that loads but cannot be trained on (no labeled rows, a single
+  class) is a different failure: `DatasetNotTrainableError` becomes `409
+  Conflict` with the reason in `detail`. Unlike the load error, the reason
+  names only counts and classes, so it is safe to show.
 - Invalid query parameters (`n=0`, `n=abc`) are rejected by `Query(ge=..., le=...)`
   with `422` before the handler runs.

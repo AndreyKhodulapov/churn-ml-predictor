@@ -1,6 +1,6 @@
 import logging
 from functools import lru_cache
-from typing import NamedTuple, cast
+from typing import NamedTuple
 
 import pandas as pd
 from sklearn.compose import ColumnTransformer
@@ -16,6 +16,7 @@ from src.core.constants import (
     TARGET_COLUMN,
     TEST_SIZE,
 )
+from src.core.exceptions import DatasetNotTrainableError
 from src.schemas.dataset import SplitDataInfo
 from src.services.dataset import get_dataset
 from src.services.utils import class_distribution
@@ -40,8 +41,8 @@ class SplitData(NamedTuple):
 def prepare_data(df: pd.DataFrame) -> PreparedData:
     """Separate the features from the churn target; rows without a label cannot be trained on and are dropped.
 
-    Gaps in the features are kept: build_imputer() fills them and must be fitted on the train part only,
-    otherwise test statistics leak into training.
+    Gaps in the features are kept: the imputer step of the churn pipeline (build_imputer()) fills them
+    and is fitted on the train part only, otherwise test statistics would leak into training.
     """
     labeled = df.dropna(subset=[TARGET_COLUMN])
     if dropped := len(df) - len(labeled):
@@ -91,30 +92,32 @@ def build_imputer(numeric_features: tuple[str, ...], categorical_features: tuple
     return imputer
 
 
-def fill_data_gaps(
-    split: SplitData, numeric_features: tuple[str, ...], categorical_features: tuple[str, ...]
-) -> tuple[SplitData, ColumnTransformer]:
-    """Fill feature gaps in both parts with statistics of the train part; the fitted imputer is returned too."""
-    X_train, X_test, y_train, y_test = split
-    imputer = build_imputer(numeric_features, categorical_features)
-    # set_output(transform="pandas") makes both calls return a DataFrame; sklearn's annotations do not know it.
-    X_train = cast(pd.DataFrame, imputer.fit_transform(X_train))  # train on the train part (fitting)
-    X_test = cast(pd.DataFrame, imputer.transform(X_test))  # only fill gaps in the test part (no leak!)
+def check_trainable(y: pd.Series) -> None:
+    """Reject a target that a churn classifier cannot be trained on.
 
-    return SplitData(X_train, X_test, y_train, y_test), imputer
+    A single class still splits fine and only fails later in fit(), so it is caught here with a clear reason.
+    """
+    if y.empty:
+        raise DatasetNotTrainableError("Dataset has no labeled rows")
+    if y.nunique() < 2:
+        raise DatasetNotTrainableError(f"Dataset has only churn class {y.iloc[0]}, a classifier needs both")
 
 
 def split_data(prepared: PreparedData) -> SplitData:
     """Split into train and test keeping the churn share of the whole dataset in both parts; gaps stay as they are."""
-    return SplitData(
-        *train_test_split(
+    check_trainable(prepared.y)
+    try:
+        parts = train_test_split(
             prepared.X,
             prepared.y,
             test_size=TEST_SIZE,
             random_state=RANDOM_STATE,
             stratify=prepared.y,  # for unbalanced data needs at least 2 rows of every class
         )
-    )
+    except ValueError as e:
+        # Too few rows of a class or too few for the test part to hold every class; sklearn names which.
+        raise DatasetNotTrainableError(str(e)) from e
+    return SplitData(*parts)
 
 
 def describe_split(split: SplitData) -> SplitDataInfo:
@@ -149,9 +152,11 @@ def check_class_shares(info: SplitDataInfo, tolerance: float = CLASS_SHARE_TOLER
 
 @lru_cache
 def get_split() -> SplitData:
-    """Prepare, split and fill the default dataset once and reuse the result for every request."""
-    prepared = prepare_data(get_dataset().get_dataframe())
-    split, _ = fill_data_gaps(split_data(prepared), prepared.numeric_features, prepared.categorical_features)
+    """Prepare and split the default dataset once and reuse the result for every request.
+
+    Feature gaps are kept: the churn pipeline fills them with statistics of the train part.
+    """
+    split = split_data(prepare_data(get_dataset().get_dataframe()))
     # Checked once here rather than on every /dataset/split-info request, since the split is cached.
     check_class_shares(describe_split(split))
     return split

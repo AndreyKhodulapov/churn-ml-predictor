@@ -4,8 +4,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from src.core.error_handlers import dataset_unavailable_handler, internal_error_handler
-from src.core.exceptions import DatasetLoadError
+from src.core.error_handlers import dataset_not_trainable_handler, dataset_unavailable_handler, internal_error_handler
+from src.core.exceptions import DatasetLoadError, DatasetNotTrainableError
 from src.routers import dataset, health, model, prediction
 from src.services.dataset import get_dataset
 from src.services.preprocessing import get_split
@@ -16,13 +16,13 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    # Load and split the dataset at startup so the first request does not wait for it. A missing or broken file
-    # does not stop the service: endpoints that need the data answer 503 and retry the load until it succeeds.
+    # Load and split the dataset at startup so the first request does not wait for it. A missing, broken or too small
+    # dataset does not stop the service: endpoints that need it answer 503 or 409 and retry until it is fixed.
     try:
         get_dataset()
         get_split()
-    except DatasetLoadError as e:
-        logger.warning("Starting without a dataset: %s", e)
+    except (DatasetLoadError, DatasetNotTrainableError) as e:
+        logger.warning("Starting without a usable dataset: %s", e)
     yield
 
 
@@ -33,6 +33,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.add_exception_handler(DatasetLoadError, dataset_unavailable_handler)  # type: ignore[arg-type]
+app.add_exception_handler(DatasetNotTrainableError, dataset_not_trainable_handler)  # type: ignore[arg-type]
 app.add_exception_handler(Exception, internal_error_handler)
 app.include_router(health.router)
 app.include_router(prediction.router)

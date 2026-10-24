@@ -72,3 +72,50 @@ async def test_train_answers_503_without_dataset(client):
 
     assert response.status_code == 503
     assert response.json() == {"detail": "Dataset is not available"}
+
+
+async def test_train_answers_409_on_header_only_dataset(client, serve_csv, csv_header):
+    serve_csv(f"{csv_header}\n")
+
+    response = await client.post("/model/train")
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Dataset cannot be used for training: Dataset has no labeled rows"}
+
+
+async def test_train_answers_409_on_single_class_dataset(client, serve_csv, csv_header, make_csv_row):
+    serve_csv("\n".join([csv_header, *[make_csv_row(0)] * 10]) + "\n")
+
+    response = await client.post("/model/train")
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": "Dataset cannot be used for training: Dataset has only churn class 0, a classifier needs both"
+    }
+
+
+async def test_train_answers_409_on_dataset_without_labels(client, serve_csv, csv_header, make_csv_row):
+    unlabeled = make_csv_row(0).removesuffix("0")
+    serve_csv(f"{csv_header}\n{unlabeled}\n{unlabeled}\n")
+
+    response = await client.post("/model/train")
+
+    assert response.status_code == 409
+    assert response.json()["detail"].endswith("Dataset has no labeled rows")
+
+
+async def test_train_fills_feature_gaps_inside_the_pipeline(client, serve_csv, csv_header, make_csv_row):
+    def with_gaps(churn: int) -> str:
+        # Blank monthly_fee and region: the split keeps the gaps and the imputer step of the pipeline fills them.
+        values = make_csv_row(churn).split(",")
+        values[0] = values[5] = ""
+        return ",".join(values)
+
+    rows = [make_csv_row(0)] * 4 + [with_gaps(0)] + [make_csv_row(1)] * 4 + [with_gaps(1)]
+    serve_csv("\n".join([csv_header, *rows]) + "\n")
+
+    response = await client.post("/model/train")
+
+    assert response.status_code == 200
+    split = get_split()
+    assert split.X_train.isna().sum().sum() + split.X_test.isna().sum().sum() == 4

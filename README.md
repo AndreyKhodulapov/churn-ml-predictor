@@ -19,7 +19,8 @@ validated features back until it is wired to the trained model.
 | GET | `/dataset/split-info` | train and test sizes, churn class distribution in each part |
 | POST | `/model/train?class_weight=balanced` | train the churn model, return accuracy and churn F1 on the test part; `class_weight` is optional |
 
-Endpoints that need the dataset answer `503` while it is missing or broken; the service itself keeps running.
+Endpoints that need the dataset answer `503` while it is missing or broken, and `409` with the reason while it
+cannot be split and trained on (no labeled rows, a single churn class, too few rows); the service itself keeps running.
 
 ## Features
 
