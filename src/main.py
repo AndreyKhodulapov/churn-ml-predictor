@@ -7,14 +7,16 @@ from fastapi import FastAPI
 from src.core.error_handlers import internal_error_handler
 from src.routers import dataset, health, prediction
 from src.services.dataset import get_dataset
+from src.services.preprocessing import get_split
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    # Load the dataset at startup so a missing or broken file stops the service right away.
+    # Load and split the dataset at startup so a missing or broken file stops the service right away.
     get_dataset()
+    get_split()
     yield
 
 

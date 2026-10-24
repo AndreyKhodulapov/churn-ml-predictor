@@ -46,13 +46,32 @@ def test_feature_vector_requires_all_fields(customer_features):
         FeatureVectorChurn(**customer_features)
 
 
-def test_dataset_row_extends_features_with_label(customer_features):
+def test_dataset_row_has_same_features_as_feature_vector():
+    assert DatasetRowChurn.model_fields.keys() - {"churn"} == FeatureVectorChurn.model_fields.keys()
+
+
+def test_dataset_row_accepts_features_with_label(customer_features):
     row = DatasetRowChurn(**customer_features, churn=1)
 
-    assert isinstance(row, FeatureVectorChurn)
-    assert row.churn == 1
+    assert row.model_dump() == {**customer_features, "churn": 1}
 
 
-def test_dataset_row_requires_binary_label(customer_features):
+def test_dataset_row_accepts_missing_values(customer_features):
+    row = DatasetRowChurn(**dict.fromkeys(customer_features), churn=None)
+
+    assert set(row.model_dump().values()) == {None}
+
+
+@pytest.mark.parametrize("field, value", [("churn", 5), ("monthly_fee", -1.0), ("region", "antarctica")])
+def test_dataset_row_rejects_invalid_present_value(customer_features, field, value):
+    row = {**customer_features, "churn": 1, field: value}
+
     with pytest.raises(ValidationError):
-        DatasetRowChurn(**customer_features, churn=5)
+        DatasetRowChurn(**row)
+
+
+def test_dataset_row_requires_all_columns(customer_features):
+    del customer_features["region"]
+
+    with pytest.raises(ValidationError):
+        DatasetRowChurn(**customer_features, churn=1)

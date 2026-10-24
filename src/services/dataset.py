@@ -5,15 +5,16 @@ from pathlib import Path
 import pandas as pd
 from pydantic import ValidationError
 
-from src.core.constants import DATASET_PATH
+from src.core.constants import DATASET_PATH, TARGET_COLUMN
 from src.core.exceptions import DatasetLoadError
 from src.schemas.dataset import ClassDistribution, DatasetInfo, DatasetRowChurn
+from src.services.utils import class_distribution
 
 logger = logging.getLogger(__name__)
 
 
 class DatasetProcessor:
-    def __init__(self, dataset_path: Path = DATASET_PATH, target_column: str = "churn") -> None:
+    def __init__(self, dataset_path: Path = DATASET_PATH, target_column: str = TARGET_COLUMN) -> None:
         self.dataset_path = dataset_path
         self.target_column = target_column
         self._df: pd.DataFrame | None = None
@@ -43,20 +44,24 @@ class DatasetProcessor:
 
     def get_info(self) -> DatasetInfo:
         df = self._ensure_loaded()
-        counts = df[self.target_column].value_counts().sort_index()
+        missing = int(df[self.target_column].isna().sum())
         return DatasetInfo(
             row_count=len(df),
             column_count=len(df.columns),
             feature_names=[str(column) for column in df.columns if column != self.target_column],
-            target_distribution={
-                int(label): ClassDistribution(count=int(count), share=count / len(df))
-                for label, count in zip(counts.index.tolist(), counts.tolist())
-            },
+            target_distribution=class_distribution(df[self.target_column]),
+            # A header-only file has no rows to take a share of.
+            target_missing=ClassDistribution(count=missing, share=missing / len(df) if len(df) else 0.0),
         )
 
+    def get_dataframe(self) -> pd.DataFrame:
+        return self._ensure_loaded()
+
     def _validate_rows(self, df: pd.DataFrame) -> list[DatasetRowChurn]:
+        # pandas reads empty cells as NaN; the schema and JSON expect None for a missing value.
+        records = df.astype(object).where(df.notna(), None).to_dict("records")
         rows = []
-        for index, record in enumerate(df.to_dict("records")):
+        for index, record in enumerate(records):
             try:
                 rows.append(DatasetRowChurn.model_validate(record))
             except ValidationError as e:

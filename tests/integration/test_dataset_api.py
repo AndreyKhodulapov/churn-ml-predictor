@@ -1,7 +1,9 @@
+import pandas as pd
 import pytest
 
 from src.main import app
 from src.services.dataset import DatasetProcessor, get_dataset
+from src.services.preprocessing import SplitData, get_split
 
 
 @pytest.fixture
@@ -78,6 +80,7 @@ async def test_info_describes_default_dataset(client):
             "0": {"count": 1597, "share": 0.7985},
             "1": {"count": 403, "share": 0.2015},
         },
+        "target_missing": {"count": 0, "share": 0.0},
     }
 
 
@@ -93,6 +96,21 @@ async def test_info_reflects_served_dataset(client, small_dataset):
     }
 
 
+async def test_info_reports_unlabeled_rows_apart_from_classes(client, write_csv, csv_header, make_csv_row):
+    rows = [make_csv_row(0), make_csv_row(1).removesuffix("1")]
+    processor = DatasetProcessor(write_csv("\n".join([csv_header, *rows]) + "\n"))
+    processor.load()
+    app.dependency_overrides[get_dataset] = lambda: processor
+
+    response = await client.get("/dataset/info")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["target_distribution"] == {"0": {"count": 1, "share": 0.5}}
+    assert body["target_missing"] == {"count": 1, "share": 0.5}
+
+
 async def test_info_does_not_depend_on_preview_being_called_first(client):
     first = await client.get("/dataset/info")
     await client.get("/dataset/preview")
@@ -100,3 +118,42 @@ async def test_info_does_not_depend_on_preview_being_called_first(client):
 
     assert first.status_code == second.status_code == 200
     assert first.json() == second.json()
+
+
+async def test_split_info_describes_default_dataset(client):
+    response = await client.get("/dataset/split-info")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "train_size": 1600,
+        "train_distribution": {
+            "0": {"count": 1278, "share": 0.79875},
+            "1": {"count": 322, "share": 0.20125},
+        },
+        "test_size": 400,
+        "test_distribution": {
+            "0": {"count": 319, "share": 0.7975},
+            "1": {"count": 81, "share": 0.2025},
+        },
+    }
+
+
+async def test_split_info_reflects_served_split(client):
+    split = SplitData(
+        X_train=pd.DataFrame(index=range(3)),
+        X_test=pd.DataFrame(index=range(3, 4)),
+        y_train=pd.Series([0, 0, 1]),
+        y_test=pd.Series([1], index=[3]),
+    )
+    app.dependency_overrides[get_split] = lambda: split
+
+    response = await client.get("/dataset/split-info")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "train_size": 3,
+        "train_distribution": {"0": {"count": 2, "share": 2 / 3}, "1": {"count": 1, "share": 1 / 3}},
+        "test_size": 1,
+        "test_distribution": {"1": {"count": 1, "share": 1.0}},
+    }
