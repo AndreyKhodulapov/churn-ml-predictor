@@ -1,10 +1,20 @@
+import warnings
+from unittest.mock import Mock
+
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.pipeline import Pipeline
 from sklearn.utils.validation import check_is_fitted
 
 from src.core.constants import CATEGORICAL_FEATURES, NUMERIC_FEATURES
-from src.services.learning import build_churn_pipeline, build_feature_transformer
+from src.schemas.learning import TrainMetrics
+from src.services.learning import (
+    build_churn_pipeline,
+    build_feature_transformer,
+    evaluate_churn_model,
+    train_churn_model,
+)
 
 
 @pytest.fixture
@@ -80,3 +90,50 @@ def test_feature_transformer_ignores_category_unseen_in_train_part(make_X):
     )
 
     assert np.all(transformed[["region_asia", "region_europe"]] == 0)
+
+
+def test_train_churn_model_returns_fitted_pipeline_without_class_weights(X_train):
+    pipeline = train_churn_model(X_train, y_train)
+
+    check_is_fitted(pipeline)
+    assert pipeline.named_steps["model"].class_weight is None
+
+
+def test_train_churn_model_passes_class_weight_to_model(X_train):
+    pipeline = train_churn_model(X_train, y_train, class_weight="balanced")
+
+    assert pipeline.named_steps["model"].class_weight == "balanced"
+
+
+def test_train_churn_model_returns_separate_model_on_every_call(X_train):
+    first, second = train_churn_model(X_train, y_train), train_churn_model(X_train, y_train)
+
+    assert first is not second
+
+
+def fixed_predictions(predictions: list[int]) -> Mock:
+    pipeline = Mock(spec=Pipeline)
+    pipeline.predict.return_value = np.array(predictions)
+    return pipeline
+
+
+def test_evaluate_churn_model_scores_test_predictions():
+    pipeline = fixed_predictions([0, 1, 0, 0])
+    X_test = pd.DataFrame(index=range(4))
+
+    metrics = evaluate_churn_model(pipeline, X_test, pd.Series([0, 1, 1, 0]))
+
+    pipeline.predict.assert_called_once_with(X_test)
+    # 3 of 4 rows are right; churn precision 1/1 and recall 1/2 give F1 = 2/3.
+    assert metrics.accuracy == 0.75
+    assert metrics.f1 == pytest.approx(2 / 3)
+
+
+def test_evaluate_churn_model_gives_zero_f1_to_model_that_never_predicts_churn():
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        metrics = evaluate_churn_model(
+            fixed_predictions([0, 0, 0, 0]), pd.DataFrame(index=range(4)), pd.Series([0, 1, 0, 0])
+        )
+
+    assert metrics == TrainMetrics(accuracy=0.75, f1=0.0)

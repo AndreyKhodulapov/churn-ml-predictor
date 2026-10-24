@@ -6,7 +6,7 @@ from fastapi import FastAPI
 
 from src.core.error_handlers import dataset_unavailable_handler, internal_error_handler
 from src.core.exceptions import DatasetLoadError
-from src.routers import dataset, health, prediction
+from src.routers import dataset, health, model, prediction
 from src.services.dataset import get_dataset
 from src.services.preprocessing import get_split
 
@@ -32,8 +32,9 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
-app.add_exception_handler(DatasetLoadError, dataset_unavailable_handler)    # type: ignore[arg-type]
+app.add_exception_handler(DatasetLoadError, dataset_unavailable_handler)  # type: ignore[arg-type]
 app.add_exception_handler(Exception, internal_error_handler)
 app.include_router(health.router)
 app.include_router(prediction.router)
 app.include_router(dataset.router)
+app.include_router(model.router)

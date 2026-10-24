@@ -4,6 +4,8 @@ from typing import Literal
 Region = Literal["europe", "asia", "america", "africa"]
 DeviceType = Literal["mobile", "desktop", "tablet"]
 PaymentMethod = Literal["card", "paypal", "crypto"]
+# "balanced" weights each class inversely to its share, so the rare churners count as much as those who stay.
+ClassWeight = Literal["balanced"]
 
 TARGET_COLUMN = "churn"
 # Set by the meaning of each feature rather than by its dtype; autopay_enabled is a 0/1 flag kept as a number.

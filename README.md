@@ -4,9 +4,9 @@ A FastAPI service that predicts customer churn: whether a customer will leave
 the service next month (`churn = 1`) or stay (`churn = 0`), based on their
 billing, usage and support history.
 
-Current state: the API validates customer features and serves the training
-dataset. `POST /predict` echoes the validated features back until a model is
-trained.
+Current state: the API validates customer features, serves the training
+dataset and trains a logistic regression on it. `POST /predict` echoes the
+validated features back until it is wired to the trained model.
 
 ## Endpoints
 
@@ -17,6 +17,9 @@ trained.
 | GET | `/dataset/preview?n=5` | first `n` rows of the training dataset, `1 <= n <= 100` |
 | GET | `/dataset/info` | row and column counts, feature names, churn class distribution |
 | GET | `/dataset/split-info` | train and test sizes, churn class distribution in each part |
+| POST | `/model/train?class_weight=balanced` | train the churn model, return accuracy and churn F1 on the test part; `class_weight` is optional |
+
+Endpoints that need the dataset answer `503` while it is missing or broken; the service itself keeps running.
 
 ## Features
 
@@ -82,6 +85,8 @@ curl -X POST http://127.0.0.1:8000/predict \
 curl "http://127.0.0.1:8000/dataset/preview?n=3"
 curl http://127.0.0.1:8000/dataset/info
 curl http://127.0.0.1:8000/dataset/split-info
+curl -X POST http://127.0.0.1:8000/model/train
+curl -X POST "http://127.0.0.1:8000/model/train?class_weight=balanced"
 ```
 
 `/dataset/info` response for the bundled dataset:
@@ -120,6 +125,20 @@ and its shares, taken over all rows, sum to less than 1 when such rows exist.
 }
 ```
 
+`/model/train` responses for the bundled dataset:
+
+```json
+{"accuracy": 0.79, "f1": 0.045454545454545456}
+```
+
+```json
+{"accuracy": 0.5875, "f1": 0.34782608695652173}
+```
+
+The first one is trained without class weights: with 20% churners the model almost never predicts churn, so its
+accuracy is close to the 0.7975 of always answering "stays" and its F1 is near zero. `class_weight=balanced`
+weights churners up: the model catches about half of them at the cost of accuracy.
+
 ## Tests
 
 ```bash
@@ -142,7 +161,7 @@ src/
 ├── main.py            # FastAPI app, startup, router registration
 ├── core/              # constants, exceptions, error handlers
 ├── routers/           # HTTP endpoints
-├── services/          # dataset loading, statistics, preprocessing and train/test split
+├── services/          # dataset loading, statistics, preprocessing, train/test split, model training
 └── schemas/           # Pydantic models of features, dataset rows and responses
 tests/
 ├── unit/
