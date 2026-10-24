@@ -61,17 +61,26 @@ def prepare_data(df: pd.DataFrame) -> PreparedData:
     )
 
 
+def split_numeric_features(numeric_features: tuple[str, ...]) -> tuple[list[str], list[str]]:
+    """Numeric features that are filled with the median and scaled, and 0/1 flags that are neither.
+
+    The first group mixes continuous values (fees, hours) with discrete counters, so it is named by what is done to it.
+    """
+    scaled = [feature for feature in numeric_features if feature not in BINARY_FEATURES]
+    binary = [feature for feature in numeric_features if feature in BINARY_FEATURES]
+    return scaled, binary
+
+
 def build_imputer(numeric_features: tuple[str, ...], categorical_features: tuple[str, ...]) -> ColumnTransformer:
     """Fill numeric gaps with the train median; binary and categorical ones with the most frequent train value.
 
     The median keeps tariffs and counters at values that really occur and ignores outliers.
     /predict rejects missing values, so a separate "missing" category would never be seen at inference.
     """
-    continuous = [feature for feature in numeric_features if feature not in BINARY_FEATURES]
-    binary = [feature for feature in numeric_features if feature in BINARY_FEATURES]
+    scaled, binary = split_numeric_features(numeric_features)
     imputer = ColumnTransformer(
         [
-            ("numeric", SimpleImputer(strategy="median"), continuous),
+            ("numeric", SimpleImputer(strategy="median"), scaled),
             ("binary", SimpleImputer(strategy="most_frequent"), binary),
             ("categorical", SimpleImputer(strategy="most_frequent"), categorical_features),
         ],
