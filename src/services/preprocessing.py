@@ -103,7 +103,7 @@ def split_data(prepared: PreparedData) -> SplitData:
             prepared.y,
             test_size=TEST_SIZE,
             random_state=RANDOM_STATE,
-            stratify=prepared.y,  # for unbalanced data, at least 2 rows of each class in dataset!
+            stratify=prepared.y,  # for unbalanced data needs at least 2 rows of every class
         )
     )
 

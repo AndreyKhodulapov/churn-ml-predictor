@@ -142,7 +142,7 @@ src/
 ├── main.py            # FastAPI app, startup, router registration
 ├── core/              # constants, exceptions, error handlers
 ├── routers/           # HTTP endpoints
-├── services/          # dataset loading and statistics
+├── services/          # dataset loading, statistics, preprocessing and train/test split
 └── schemas/           # Pydantic models of features, dataset rows and responses
 tests/
 ├── unit/

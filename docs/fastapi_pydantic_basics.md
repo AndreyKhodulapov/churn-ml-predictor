@@ -36,8 +36,9 @@ Short notes on the ideas the service is built on.
   documentation (`description`, `examples`).
 - `Literal[...]` restricts a field to a fixed set of values - a cheap way to
   validate categorical features before they reach the model.
-- Inheritance reuses fields: a labeled dataset row is the feature vector plus
-  the target column.
+- Inheritance reuses fields, but only when the constraints match: a dataset
+  row allows missing values that a prediction request must not have, so it
+  declares the same fields as optional instead of extending the feature vector.
 - `model_dump()` / `model_dump_json()` serialize, `model_validate()` parses
   a dict, `model_json_schema()` produces the JSON Schema.
 
