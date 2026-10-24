@@ -1,5 +1,24 @@
+import logging
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
+
+from src.core.exceptions import DatasetLoadError, DatasetNotTrainableError
+
+logger = logging.getLogger(__name__)
+
+
+async def dataset_unavailable_handler(request: Request, exc: DatasetLoadError) -> JSONResponse:
+    # The message names the file path, so it goes to the log only; the next request retries the load.
+    logger.warning("Dataset is not available: %s", exc)
+    return JSONResponse(status_code=503, content={"detail": "Dataset is not available"})
+
+
+async def dataset_not_trainable_handler(request: Request, exc: DatasetNotTrainableError) -> JSONResponse:
+    # The request is fine but the loaded data does not allow it: 409 Conflict with the current state,
+    # not 422, which is for bad input. The message names counts and classes only, so it is returned as is.
+    logger.warning("Dataset cannot be used for training: %s", exc)
+    return JSONResponse(status_code=409, content={"detail": f"Dataset cannot be used for training: {exc}"})
 
 
 async def internal_error_handler(request: Request, exc: Exception) -> JSONResponse:

@@ -1,17 +1,17 @@
 import logging
+import re
 
 import pandas as pd
 import pytest
 
 from src.core.constants import BINARY_FEATURES, CATEGORICAL_FEATURES, NUMERIC_FEATURES, TARGET_COLUMN
+from src.core.exceptions import DatasetNotTrainableError
 from src.schemas.dataset import ClassDistribution, DatasetRowChurn, SplitDataInfo
 from src.services.preprocessing import (
     PreparedData,
-    SplitData,
     build_imputer,
     check_class_shares,
     describe_split,
-    fill_data_gaps,
     get_split,
     prepare_data,
     split_data,
@@ -150,33 +150,37 @@ def test_split_data_keeps_feature_gaps(prepared):
     assert split.X_train["monthly_fee"].isna().sum() + split.X_test["monthly_fee"].isna().sum() == 1
 
 
-def test_fill_data_gaps_uses_train_statistics_only(make_df):
-    prepared = prepare_data(make_df(0, 1, 0, 1, 0, monthly_fee=[10.0, 30.0, None, None, 1000.0]))
-    X, y = prepared.X, prepared.y
-    split = SplitData(X.iloc[:3], X.iloc[3:], y.iloc[:3], y.iloc[3:])
+@pytest.mark.parametrize(
+    ("labels", "reason"),
+    [
+        ([None, None], "Dataset has no labeled rows"),
+        ([0] * 10, "Dataset has only churn class 0, a classifier needs both"),
+        ([1] * 10, "Dataset has only churn class 1, a classifier needs both"),
+        # Stratification needs 2 rows of every class.
+        ([0] * 9 + [1], "least populated classes in y have only 1 member"),
+        # 20% of 4 rows is a 1-row test part, which cannot hold both classes.
+        ([0, 0, 1, 1], "test_size = 1 should be greater or equal to the number of classes = 2"),
+    ],
+)
+def test_split_data_rejects_dataset_it_cannot_split_for_training(make_df, labels, reason):
+    prepared = prepare_data(make_df(*labels))
 
-    filled, imputer = fill_data_gaps(split, prepared.numeric_features, prepared.categorical_features)
-
-    # The median of the train part [10, 30]; with the test value 1000.0 it would be 30.
-    assert imputer.named_transformers_["numeric"].statistics_[0] == 20.0
-    assert (filled.X_train.loc[2, "monthly_fee"], filled.X_test.loc[3, "monthly_fee"]) == (20.0, 20.0)
-    assert filled.X_test.loc[4, "monthly_fee"] == 1000.0
-    pd.testing.assert_series_equal(filled.y_train, split.y_train)
-    pd.testing.assert_series_equal(filled.y_test, split.y_test)
+    with pytest.raises(DatasetNotTrainableError, match=re.escape(reason)):
+        split_data(prepared)
 
 
-def test_fill_data_gaps_leaves_no_gaps(prepared):
-    filled, _ = fill_data_gaps(split_data(prepared), prepared.numeric_features, prepared.categorical_features)
+def test_split_data_accepts_smallest_dataset_with_both_classes_in_both_parts(make_df):
+    split = split_data(prepare_data(make_df(0, 0, 0, 1, 1, 1)))
 
-    assert filled.X_train.isna().sum().sum() == filled.X_test.isna().sum().sum() == 0
-    assert list(filled.X_train.columns) == list(filled.X_test.columns) == FEATURES
+    assert sorted(split.y_test) == [0, 1]
+    assert sorted(split.y_train) == [0, 0, 1, 1]
 
 
 def test_get_split_splits_default_dataset_once():
     split = get_split()
 
     assert (len(split.X_train), len(split.X_test)) == (1600, 400)
-    assert split.X_train.isna().sum().sum() == split.X_test.isna().sum().sum() == 0
+    assert list(split.X_train.columns) == list(split.X_test.columns) == FEATURES
     assert get_split() is split
 
 

@@ -45,9 +45,13 @@ Short notes on reading, validating and serving a tabular dataset.
   `Depends(get_dataset)` calls the function per request, but the body runs
   only on the first call. Exceptions are not cached, so a failed load is
   retried on the next call.
-- Calling the dependency in `lifespan` loads the data at startup: a missing
-  or broken file stops the service immediately (fail fast) instead of
-  failing the first user request.
+- Calling the dependency in `lifespan` loads the data at startup, so the
+  first request does not wait for it. Two options for a missing or broken
+  file: stop the service right away (fail fast), or start without data and
+  answer `503 Service Unavailable` on the endpoints that need it. This
+  service does the latter: `/health` and `/predict` keep working, and since
+  exceptions are not cached, the first request after the file is fixed
+  loads it without a restart.
 - Keeping the dataset behind a dependency, not a module-level global, lets
   tests swap it with `app.dependency_overrides[get_dataset]`.
 
@@ -55,5 +59,12 @@ Short notes on reading, validating and serving a tabular dataset.
 
 - An unexpected exception should become a generic `500` JSON response;
   file paths and stack traces stay in the server log, not in the response.
+- An expected failure gets its own handler and status: `DatasetLoadError`
+  becomes `503` ("try again later"), not `500` ("bug in the service").
+  A handler registered for a specific class wins over the `Exception` one.
+- A dataset that loads but cannot be trained on (no labeled rows, a single
+  class) is a different failure: `DatasetNotTrainableError` becomes `409
+  Conflict` with the reason in `detail`. Unlike the load error, the reason
+  names only counts and classes, so it is safe to show.
 - Invalid query parameters (`n=0`, `n=abc`) are rejected by `Query(ge=..., le=...)`
   with `422` before the handler runs.

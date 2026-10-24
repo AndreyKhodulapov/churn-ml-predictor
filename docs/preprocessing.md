@@ -51,6 +51,9 @@ from.
   feature selection.
 - Putting the transformers into a `Pipeline` makes this automatic, including
   inside cross-validation, and the same fitted steps are reused at inference.
+  Here the split keeps the gaps and the imputer is the first step of the churn
+  pipeline, so `pipeline.fit(X_train, y_train)` learns the medians from train
+  and the fitted pipeline fills gaps in any raw row it predicts on.
 
 ## Train and test split
 
@@ -67,6 +70,22 @@ from.
   cross-validation on train (`StratifiedKFold`), never on test.
 - When the data has a time order, a random split leaks the future into
   training; split by time instead (train on earlier months, test on later).
+
+## Too little data to train
+
+- A dataset can be loaded and still be unusable: a header-only file, rows
+  without labels, or a single churn class. The split and training check this
+  up front and raise `DatasetNotTrainableError` with the reason.
+- A single class is the sneaky case: `train_test_split` accepts it, and only
+  `LogisticRegression.fit` fails later with "needs samples of at least 2
+  classes". So it is rejected explicitly.
+- Stratification adds two more limits: every class needs at least 2 rows, and
+  the test part (20%, rounded up) must hold at least one row of every class.
+  With two classes that means at least 6 rows. scikit-learn's own messages
+  name the exact reason, so they are passed through.
+- The API answers `409 Conflict` with the reason: the request is valid, but
+  the current data does not allow it. `/dataset/info` still describes such a
+  dataset, since describing it needs no split.
 
 ## Checking class distribution
 
