@@ -16,6 +16,7 @@ trained.
 | POST | `/predict` | validate customer features (echoed back for now) |
 | GET | `/dataset/preview?n=5` | first `n` rows of the training dataset, `1 <= n <= 100` |
 | GET | `/dataset/info` | row and column counts, feature names, churn class distribution |
+| GET | `/dataset/split-info` | train and test sizes, churn class distribution in each part |
 
 ## Features
 
@@ -38,6 +39,13 @@ A training dataset row has the same fields plus the `churn` label (`0` or `1`).
 The training data lives in `data/churn_dataset.csv`. It is loaded and
 validated once at startup: if the file is missing or a row does not match the
 schema, the service fails to start and logs the reason.
+
+At startup the dataset is also prepared for training: rows without a `churn`
+label are dropped, the features are split 80/20 into train and test with the
+churn share kept the same in both parts (`stratify`, fixed `random_state`), and
+feature gaps are filled with the train median (numeric) or the most frequent
+train value (`autopay_enabled` and categorical). A warning is logged if a churn
+class share differs between train and test by more than 1 percentage point.
 
 ## Run
 
@@ -73,6 +81,7 @@ curl -X POST http://127.0.0.1:8000/predict \
 
 curl "http://127.0.0.1:8000/dataset/preview?n=3"
 curl http://127.0.0.1:8000/dataset/info
+curl http://127.0.0.1:8000/dataset/split-info
 ```
 
 `/dataset/info` response for the bundled dataset:
@@ -93,6 +102,23 @@ curl http://127.0.0.1:8000/dataset/info
 
 `target_missing` counts rows without a `churn` label. They are not a class, so `target_distribution` leaves them out
 and its shares, taken over all rows, sum to less than 1 when such rows exist.
+
+`/dataset/split-info` response for the bundled dataset:
+
+```json
+{
+  "train_size": 1600,
+  "train_distribution": {
+    "0": {"count": 1278, "share": 0.79875},
+    "1": {"count": 322, "share": 0.20125}
+  },
+  "test_size": 400,
+  "test_distribution": {
+    "0": {"count": 319, "share": 0.7975},
+    "1": {"count": 81, "share": 0.2025}
+  }
+}
+```
 
 ## Tests
 

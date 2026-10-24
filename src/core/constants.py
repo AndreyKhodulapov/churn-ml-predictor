@@ -21,6 +21,8 @@ BINARY_FEATURES = ("autopay_enabled",)
 
 TEST_SIZE = 0.2
 RANDOM_STATE = 42
+# Largest gap between the train and test shares of a churn class that a split may have without a warning.
+CLASS_SHARE_TOLERANCE = 0.01
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"

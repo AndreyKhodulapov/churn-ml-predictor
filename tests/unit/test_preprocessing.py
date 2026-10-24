@@ -4,11 +4,13 @@ import pandas as pd
 import pytest
 
 from src.core.constants import BINARY_FEATURES, CATEGORICAL_FEATURES, NUMERIC_FEATURES, TARGET_COLUMN
-from src.schemas.dataset import DatasetRowChurn
+from src.schemas.dataset import ClassDistribution, DatasetRowChurn, SplitDataInfo
 from src.services.preprocessing import (
     PreparedData,
     SplitData,
     build_imputer,
+    check_class_shares,
+    describe_split,
     fill_data_gaps,
     get_split,
     prepare_data,
@@ -176,3 +178,56 @@ def test_get_split_splits_default_dataset_once():
     assert (len(split.X_train), len(split.X_test)) == (1600, 400)
     assert split.X_train.isna().sum().sum() == split.X_test.isna().sum().sum() == 0
     assert get_split() is split
+
+
+def test_describe_split_reports_sizes_and_distributions(prepared):
+    info = describe_split(split_data(prepared))
+
+    assert info == SplitDataInfo(
+        train_size=16,
+        train_distribution={0: ClassDistribution(count=12, share=0.75), 1: ClassDistribution(count=4, share=0.25)},
+        test_size=4,
+        test_distribution={0: ClassDistribution(count=3, share=0.75), 1: ClassDistribution(count=1, share=0.25)},
+    )
+
+
+def make_info(train_shares: dict[int, float], test_shares: dict[int, float]) -> SplitDataInfo:
+    def distribution(shares: dict[int, float], size: int) -> dict[int, ClassDistribution]:
+        return {label: ClassDistribution(count=round(share * size), share=share) for label, share in shares.items()}
+
+    return SplitDataInfo(
+        train_size=80,
+        train_distribution=distribution(train_shares, 80),
+        test_size=20,
+        test_distribution=distribution(test_shares, 20),
+    )
+
+
+def test_check_class_shares_logs_matching_shares_without_warning(caplog):
+    with caplog.at_level(logging.INFO):
+        check_class_shares(make_info({0: 0.8, 1: 0.2}, {0: 0.805, 1: 0.195}))
+
+    assert "Churn shares in train: {0: 0.8, 1: 0.2}, in test: {0: 0.805, 1: 0.195}" in caplog.text
+    assert not [record for record in caplog.records if record.levelno == logging.WARNING]
+
+
+def test_check_class_shares_warns_about_differing_class(caplog):
+    with caplog.at_level(logging.WARNING):
+        check_class_shares(make_info({0: 0.8, 1: 0.2}, {0: 0.7, 1: 0.3}))
+
+    assert "Churn class 0 share differs by 0.1000" in caplog.text
+    assert "Churn class 1 share differs by 0.1000" in caplog.text
+
+
+def test_check_class_shares_treats_absent_class_as_zero_share(caplog):
+    with caplog.at_level(logging.WARNING):
+        check_class_shares(make_info({0: 0.8, 1: 0.2}, {0: 1.0}))
+
+    assert "Churn class 1 share differs by 0.2000" in caplog.text
+
+
+def test_check_class_shares_respects_tolerance(caplog):
+    with caplog.at_level(logging.WARNING):
+        check_class_shares(make_info({0: 0.8, 1: 0.2}, {0: 0.7, 1: 0.3}), tolerance=0.2)
+
+    assert not caplog.records

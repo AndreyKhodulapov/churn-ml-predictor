@@ -40,3 +40,12 @@ class DatasetInfo(BaseSchema):
     target_distribution: dict[int, ClassDistribution]
     # Rows without a label: not a class, so they are reported apart from target_distribution.
     target_missing: ClassDistribution
+
+
+class SplitDataInfo(BaseSchema):
+    """Sizes of the train and test parts and the churn distribution in each of them."""
+
+    train_size: int
+    train_distribution: dict[int, ClassDistribution]
+    test_size: int
+    test_distribution: dict[int, ClassDistribution]
