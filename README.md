@@ -242,7 +242,7 @@ data/
 models/                # trained model saved by /model/train, not tracked by git
 src/
 ├── main.py            # FastAPI app, startup, router registration
-├── core/              # constants, exceptions, error handlers
+├── core/              # constants, /docs examples, exceptions, error handlers
 ├── routers/           # HTTP endpoints
 ├── services/          # dataset loading, statistics, preprocessing, train/test split, model training, storage and prediction
 └── schemas/           # Pydantic models of features, dataset rows and responses

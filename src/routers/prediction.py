@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends
 
-from src.core.constants import PREDICT_EXAMPLES, PREDICT_RESPONSES
+from src.core.openapi_examples import PREDICT_EXAMPLES, PREDICT_RESPONSES
 from src.schemas.prediction import FeatureVectorChurn, PredictionResponseChurn
 from src.services.model_storage import ChurnModelStore, get_model_store
 from src.services.prediction import predict_churn

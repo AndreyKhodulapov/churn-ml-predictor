@@ -1,9 +1,9 @@
 import pytest
 
-from src.core.constants import (
+from src.core.constants import MODEL_NOT_TRAINED_DETAIL
+from src.core.openapi_examples import (
     LOYAL_CUSTOMER,
     LOYAL_CUSTOMER_PREDICTION,
-    MODEL_NOT_TRAINED_DETAIL,
     RISKY_CUSTOMER,
     RISKY_CUSTOMER_PREDICTION,
 )

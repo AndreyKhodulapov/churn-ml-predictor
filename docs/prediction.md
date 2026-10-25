@@ -50,9 +50,7 @@ in `/docs`.
   were sent, so a client reads it the same way in both cases.
 - Pydantic checks the body against both types of the union, so a 422 lists an
   error for each of them, and `loc` names the type
-  (`["body", "FeatureVectorChurn", "region"]`). A callable `Discriminator`
-  that picks the type by `isinstance(value, list)` would leave only the
-  relevant error.
+  (`["body", "FeatureVectorChurn", "region"]`).
 
 ## No trained model
 
@@ -73,6 +71,6 @@ in `/docs`.
   type `list[PredictionResponseChurn]`.
 - `Field(examples=[...])` on schema fields shows sample values in the schema
   section.
-- The examples live in `src/core/constants.py` and are reused by the tests,
-  which check that they are in the OpenAPI schema and that the model trained
-  on the bundled dataset really answers them as documented.
+- The examples live in `src/core/openapi_examples.py` and are reused by the
+  tests, which check that they are in the OpenAPI schema and that the model
+  trained on the bundled dataset really answers them as documented.
