@@ -4,8 +4,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from src.core.error_handlers import dataset_not_trainable_handler, dataset_unavailable_handler, internal_error_handler
-from src.core.exceptions import DatasetLoadError, DatasetNotTrainableError, ModelLoadError
+from src.core.error_handlers import (
+    dataset_not_trainable_handler,
+    dataset_unavailable_handler,
+    internal_error_handler,
+    model_not_trained_handler,
+)
+from src.core.exceptions import DatasetLoadError, DatasetNotTrainableError, ModelLoadError, ModelNotTrainedError
 from src.routers import dataset, health, model, prediction
 from src.services.dataset import get_dataset
 from src.services.model_storage import get_model_store
@@ -41,6 +46,7 @@ app = FastAPI(
 )
 app.add_exception_handler(DatasetLoadError, dataset_unavailable_handler)  # type: ignore[arg-type]
 app.add_exception_handler(DatasetNotTrainableError, dataset_not_trainable_handler)  # type: ignore[arg-type]
+app.add_exception_handler(ModelNotTrainedError, model_not_trained_handler)  # type: ignore[arg-type]
 app.add_exception_handler(Exception, internal_error_handler)
 app.include_router(health.router)
 app.include_router(prediction.router)

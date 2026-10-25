@@ -11,3 +11,7 @@ class DatasetNotTrainableError(Exception):
 
 class ModelLoadError(Exception):
     """The saved churn model file cannot be read or does not hold a churn model."""
+
+
+class ModelNotTrainedError(Exception):
+    """A prediction is requested before any churn model has been trained or loaded."""

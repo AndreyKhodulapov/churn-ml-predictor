@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 Region = Literal["europe", "asia", "america", "africa"]
 DeviceType = Literal["mobile", "desktop", "tablet"]
@@ -31,3 +31,31 @@ DATA_DIR = PROJECT_ROOT / "data"
 DATASET_PATH = DATA_DIR / "churn_dataset.csv"
 MODELS_DIR = PROJECT_ROOT / "models"
 MODEL_PATH = MODELS_DIR / "churn_model.joblib"
+
+# Customers shown as /predict request examples in /docs and reused by the tests.
+LOYAL_CUSTOMER: dict[str, Any] = {
+    "monthly_fee": 29.99,
+    "usage_hours": 42.5,
+    "support_requests": 1,
+    "account_age_months": 18,
+    "failed_payments": 0,
+    "region": "europe",
+    "device_type": "mobile",
+    "payment_method": "card",
+    "autopay_enabled": 1,
+}
+RISKY_CUSTOMER: dict[str, Any] = {
+    "monthly_fee": 59.99,
+    "usage_hours": 3.0,
+    "support_requests": 6,
+    "account_age_months": 2,
+    "failed_payments": 3,
+    "region": "asia",
+    "device_type": "desktop",
+    "payment_method": "crypto",
+    "autopay_enabled": 0,
+}
+PREDICT_EXAMPLES: dict[str, Any] = {
+    "one_customer": {"summary": "One customer", "value": LOYAL_CUSTOMER},
+    "several_customers": {"summary": "Several customers", "value": [LOYAL_CUSTOMER, RISKY_CUSTOMER]},
+}

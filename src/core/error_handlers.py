@@ -3,7 +3,7 @@ import logging
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-from src.core.exceptions import DatasetLoadError, DatasetNotTrainableError
+from src.core.exceptions import DatasetLoadError, DatasetNotTrainableError, ModelNotTrainedError
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,13 @@ async def dataset_not_trainable_handler(request: Request, exc: DatasetNotTrainab
     # not 422, which is for bad input. The message names counts and classes only, so it is returned as is.
     logger.warning("Dataset cannot be used for training: %s", exc)
     return JSONResponse(status_code=409, content={"detail": f"Dataset cannot be used for training: {exc}"})
+
+
+async def model_not_trained_handler(request: Request, exc: ModelNotTrainedError) -> JSONResponse:
+    # The service is up but cannot predict yet: 503, like the missing dataset; it is fixed by /model/train.
+    return JSONResponse(
+        status_code=503, content={"detail": "Churn model is not trained yet, call POST /model/train first"}
+    )
 
 
 async def internal_error_handler(request: Request, exc: Exception) -> JSONResponse:

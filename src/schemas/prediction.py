@@ -21,7 +21,8 @@ class FeatureVectorChurn(BaseSchema):
 
 
 class PredictionResponseChurn(BaseSchema):
-    """Churn prediction response."""
+    """Predicted churn class of one customer and the probabilities of both classes."""
 
-    churn: Literal[0, 1]
-    probability: float
+    churn: Literal[0, 1] = Field(examples=[0])
+    probability_no_churn: float = Field(ge=0, le=1, examples=[0.83])
+    probability_churn: float = Field(ge=0, le=1, examples=[0.17])
