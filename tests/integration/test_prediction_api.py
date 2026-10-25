@@ -1,6 +1,12 @@
 import pytest
 
-from src.core.constants import LOYAL_CUSTOMER, RISKY_CUSTOMER
+from src.core.constants import (
+    LOYAL_CUSTOMER,
+    LOYAL_CUSTOMER_PREDICTION,
+    MODEL_NOT_TRAINED_DETAIL,
+    RISKY_CUSTOMER,
+    RISKY_CUSTOMER_PREDICTION,
+)
 
 
 @pytest.fixture
@@ -14,7 +20,7 @@ async def test_predict_answers_503_without_trained_model(client, customer_featur
     response = await client.post("/predict", json=customer_features)
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "Churn model is not trained yet, call POST /model/train first"}
+    assert response.json() == {"detail": MODEL_NOT_TRAINED_DETAIL}
 
 
 async def test_predict_one_customer_returns_one_prediction(trained_client, customer_features):
@@ -58,4 +64,18 @@ async def test_openapi_shows_predict_examples(client):
     examples = operation["requestBody"]["content"]["application/json"]["examples"]
     assert examples["one_customer"]["value"] == LOYAL_CUSTOMER
     assert examples["several_customers"]["value"] == [LOYAL_CUSTOMER, RISKY_CUSTOMER]
-    assert "503" in operation["responses"]
+    response_examples = operation["responses"]["200"]["content"]["application/json"]["examples"]
+    assert response_examples["several_customers"]["value"] == [LOYAL_CUSTOMER_PREDICTION, RISKY_CUSTOMER_PREDICTION]
+    assert operation["responses"]["503"]["content"]["application/json"]["example"] == {
+        "detail": MODEL_NOT_TRAINED_DETAIL
+    }
+    assert "Answers `503` until a model is trained" in operation["description"]
+
+
+async def test_openapi_response_examples_match_the_model_trained_on_bundled_dataset(trained_client):
+    response = await trained_client.post("/predict", json=[LOYAL_CUSTOMER, RISKY_CUSTOMER])
+
+    for prediction, example in zip(
+        response.json(), [LOYAL_CUSTOMER_PREDICTION, RISKY_CUSTOMER_PREDICTION], strict=True
+    ):
+        assert prediction == pytest.approx(example, abs=1e-3)

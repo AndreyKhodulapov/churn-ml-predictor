@@ -3,6 +3,7 @@ import logging
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
+from src.core.constants import MODEL_NOT_TRAINED_DETAIL
 from src.core.exceptions import DatasetLoadError, DatasetNotTrainableError, ModelNotTrainedError
 
 logger = logging.getLogger(__name__)
@@ -23,9 +24,7 @@ async def dataset_not_trainable_handler(request: Request, exc: DatasetNotTrainab
 
 async def model_not_trained_handler(request: Request, exc: ModelNotTrainedError) -> JSONResponse:
     # The service is up but cannot predict yet: 503, like the missing dataset; it is fixed by /model/train.
-    return JSONResponse(
-        status_code=503, content={"detail": "Churn model is not trained yet, call POST /model/train first"}
-    )
+    return JSONResponse(status_code=503, content={"detail": MODEL_NOT_TRAINED_DETAIL})
 
 
 async def internal_error_handler(request: Request, exc: Exception) -> JSONResponse:
