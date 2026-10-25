@@ -83,6 +83,14 @@ class ChurnModelStore:
             save_churn_model(model, self.path)
             self._model = model
 
+    def load(self) -> None:
+        """Serve the model saved by a previous run, if there is one; a missing file is not an error."""
+        if not self.path.exists():
+            logger.info("No saved churn model at %s, the service starts untrained", self.path)
+            return
+        self._model = load_churn_model(self.path)
+        logger.info("Loaded churn model trained at %s from %s", self._model.trained_at.isoformat(), self.path)
+
     def get_status(self) -> ModelStatus:
         # Read once: a training finishing meanwhile must not mix the fields of two models.
         model = self._model

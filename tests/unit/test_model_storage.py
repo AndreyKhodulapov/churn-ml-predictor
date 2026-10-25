@@ -140,6 +140,36 @@ def test_store_keeps_previous_model_when_write_fails(trained_model, model_path, 
     assert store.model is trained_model
 
 
+def test_store_load_serves_model_saved_by_previous_run(trained_model, model_path, X):
+    save_churn_model(trained_model, model_path)
+    store = ChurnModelStore(model_path)
+
+    store.load()
+
+    assert store.model.trained_at == trained_model.trained_at
+    np.testing.assert_array_equal(store.model.pipeline.predict(X), trained_model.pipeline.predict(X))
+
+
+def test_store_load_without_saved_model_stays_untrained(model_path, caplog):
+    store = ChurnModelStore(model_path)
+
+    with caplog.at_level(logging.INFO):
+        store.load()
+
+    assert store.model is None
+    assert f"No saved churn model at {model_path}" in caplog.text
+
+
+def test_store_load_rejects_damaged_file_and_stays_untrained(model_path):
+    model_path.write_bytes(b"not a model")
+    store = ChurnModelStore(model_path)
+
+    with pytest.raises(ModelLoadError):
+        store.load()
+
+    assert store.model is None
+
+
 def test_store_status_reports_untrained_model(model_path):
     assert ChurnModelStore(model_path).get_status() == ModelStatus(trained=False)
 

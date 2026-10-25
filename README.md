@@ -5,8 +5,8 @@ the service next month (`churn = 1`) or stay (`churn = 0`), based on their
 billing, usage and support history.
 
 Current state: the API validates customer features, serves the training
-dataset, trains a logistic regression on it and saves the trained model to
-disk. `POST /predict` echoes the validated features back until it is wired to
+dataset, trains a logistic regression on it and keeps the trained model on
+disk across restarts. `POST /predict` echoes the validated features back until it is wired to
 the trained model.
 
 ## Endpoints
@@ -149,6 +149,20 @@ Every successful `/model/train` saves the model to `models/churn_model.joblib`, 
 training time, class weight and the scikit-learn version it was trained with. The file is written to a temporary name
 and renamed, so a crash during the write keeps the previous model intact. A training that fails (`503`, `409`) leaves
 the previous model in place.
+
+At startup the service loads the saved model, so `/model/status` reports the same model after a restart. Without the
+file the service starts untrained. A file that cannot be read does not stop the service either: the reason is logged
+and the service starts untrained until the next `/model/train` writes a new model over it. A model saved with another
+scikit-learn version is loaded with a warning, since its predictions may differ.
+
+To check it by hand: train a model, restart the service and compare `/model/status` before and after.
+
+```bash
+curl -X POST http://127.0.0.1:8000/model/train
+curl http://127.0.0.1:8000/model/status
+# stop the service with Ctrl+C and start it again with make run
+curl http://127.0.0.1:8000/model/status   # the same trained_at and metrics
+```
 
 `/model/status` before the first training:
 

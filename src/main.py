@@ -5,9 +5,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from src.core.error_handlers import dataset_not_trainable_handler, dataset_unavailable_handler, internal_error_handler
-from src.core.exceptions import DatasetLoadError, DatasetNotTrainableError
+from src.core.exceptions import DatasetLoadError, DatasetNotTrainableError, ModelLoadError
 from src.routers import dataset, health, model, prediction
 from src.services.dataset import get_dataset
+from src.services.model_storage import get_model_store
 from src.services.preprocessing import get_split
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -23,6 +24,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         get_split()
     except (DatasetLoadError, DatasetNotTrainableError) as e:
         logger.warning("Starting without a usable dataset: %s", e)
+    # Serve the model trained before the restart. A damaged file does not stop the service either:
+    # /model/status reports no model until /model/train saves a new one over it.
+    try:
+        get_model_store().load()
+    except ModelLoadError as e:
+        logger.warning("Starting without a trained churn model: %s", e)
     yield
 
 

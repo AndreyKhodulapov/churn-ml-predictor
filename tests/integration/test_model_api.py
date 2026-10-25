@@ -1,11 +1,13 @@
+import logging
 from datetime import UTC, datetime
 
+import numpy as np
 import pandas as pd
 import pytest
 
 from src.core.exceptions import DatasetLoadError
-from src.main import app
-from src.services.model_storage import load_churn_model
+from src.main import app, lifespan
+from src.services.model_storage import get_model_store, load_churn_model
 from src.services.preprocessing import SplitData, get_split
 
 
@@ -191,3 +193,43 @@ async def test_train_fills_feature_gaps_inside_the_pipeline(client, serve_csv, c
     assert response.status_code == 200
     split = get_split()
     assert split.X_train.isna().sum().sum() + split.X_test.isna().sum().sum() == 4
+
+
+async def test_trained_model_survives_restart(client, model_store):
+    await client.post("/model/train", params={"class_weight": "balanced"})
+    status_before = (await client.get("/model/status")).json()
+
+    # A restarted process begins with an empty store; the lifespan fills it from the saved file.
+    get_model_store.cache_clear()
+    async with lifespan(app):
+        status_after = (await client.get("/model/status")).json()
+
+    restarted = get_model_store()
+    assert restarted is not model_store
+    assert status_after == status_before
+    X_test = get_split().X_test
+    np.testing.assert_array_equal(
+        restarted.model.pipeline.predict_proba(X_test), model_store.model.pipeline.predict_proba(X_test)
+    )
+
+
+async def test_startup_without_saved_model_reports_untrained_model(client):
+    async with lifespan(app):
+        response = await client.get("/model/status")
+
+    assert response.json()["trained"] is False
+
+
+async def test_startup_survives_damaged_model_file(client, model_store, caplog):
+    model_store.path.parent.mkdir(parents=True)
+    model_store.path.write_bytes(b"not a model")
+
+    with caplog.at_level(logging.WARNING):
+        async with lifespan(app):
+            status = (await client.get("/model/status")).json()
+            retrained = await client.post("/model/train")
+
+    assert "Starting without a trained churn model: Cannot read churn model" in caplog.text
+    assert status["trained"] is False
+    assert retrained.status_code == 200
+    assert load_churn_model(model_store.path).metrics.model_dump() == retrained.json()
