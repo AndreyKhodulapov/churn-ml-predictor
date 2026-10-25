@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends, Query
 
 from src.core.constants import ClassWeight
 from src.schemas.learning import ModelStatus, TrainMetrics
-from src.services.learning import evaluate_churn_model, train_churn_model
-from src.services.model_storage import ChurnModelStore, TrainedChurnModel, get_model_store
+from src.services.model import train_and_save_churn_model
+from src.services.model_storage import ChurnModelStore, get_model_store
 from src.services.preprocessing import SplitData, get_split
 
 router = APIRouter(tags=["Model"], prefix="/model")
@@ -20,10 +20,7 @@ def train_model(
         ClassWeight | None, Query(description="Class weights; omit to weight every row equally")
     ] = None,
 ) -> TrainMetrics:
-    pipeline = train_churn_model(split.X_train, split.y_train, class_weight)
-    metrics = evaluate_churn_model(pipeline, split.X_test, split.y_test)
-    store.save(TrainedChurnModel(pipeline, metrics, class_weight))
-    return metrics
+    return train_and_save_churn_model(split, class_weight, store)
 
 
 @router.get("/status")
