@@ -8,20 +8,14 @@ async def test_root_reports_service_is_running(client):
     assert response.json() == {"message": "ml churn service is running"}
 
 
-async def test_predict_echoes_features(client, customer_features):
-    response = await client.post("/predict", json=customer_features)
-
-    assert response.status_code == 200
-    assert response.json() == customer_features
-
-
 async def test_predict_rejects_unknown_region(client, customer_features):
     customer_features["region"] = "antarctica"
 
     response = await client.post("/predict", json=customer_features)
 
     assert response.status_code == 422
-    assert response.json()["detail"][0]["loc"] == ["body", "region"]
+    # The body is one customer or a list of them, so the error names the branch the input was checked against.
+    assert response.json()["detail"][0]["loc"] == ["body", "FeatureVectorChurn", "region"]
 
 
 async def test_predict_rejects_missing_feature(client, customer_features):
@@ -30,7 +24,8 @@ async def test_predict_rejects_missing_feature(client, customer_features):
     response = await client.post("/predict", json=customer_features)
 
     assert response.status_code == 422
-    assert response.json()["detail"][0]["loc"] == ["body", "failed_payments"]
+    # The body is one customer or a list of them, so the error names the branch the input was checked against.
+    assert response.json()["detail"][0]["loc"] == ["body", "FeatureVectorChurn", "failed_payments"]
 
 
 async def test_openapi_describes_feature_schema(client):

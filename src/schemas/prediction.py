@@ -18,3 +18,11 @@ class FeatureVectorChurn(BaseSchema):
     device_type: DeviceType
     payment_method: PaymentMethod
     autopay_enabled: Literal[0, 1]
+
+
+class PredictionResponseChurn(BaseSchema):
+    """Predicted churn class of one customer and the probabilities of both classes."""
+
+    churn: Literal[0, 1] = Field(examples=[0])
+    probability_no_churn: float = Field(ge=0, le=1, examples=[0.83])
+    probability_churn: float = Field(ge=0, le=1, examples=[0.17])

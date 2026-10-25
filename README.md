@@ -5,16 +5,15 @@ the service next month (`churn = 1`) or stay (`churn = 0`), based on their
 billing, usage and support history.
 
 Current state: the API validates customer features, serves the training
-dataset, trains a logistic regression on it and keeps the trained model on
-disk across restarts. `POST /predict` echoes the validated features back until it is wired to
-the trained model.
+dataset, trains a logistic regression on it, keeps the trained model on
+disk across restarts and predicts churn of new customers with it.
 
 ## Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/` | health message |
-| POST | `/predict` | validate customer features (echoed back for now) |
+| POST | `/predict` | predict churn of one customer or a list of them: class and probabilities of both classes; `503` until a model is trained |
 | GET | `/dataset/preview?n=5` | first `n` rows of the training dataset, `1 <= n <= 100` |
 | GET | `/dataset/info` | row and column counts, feature names, churn class distribution |
 | GET | `/dataset/split-info` | train and test sizes, churn class distribution in each part |
@@ -79,12 +78,6 @@ Then open:
 Example requests:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/predict \
-  -H "Content-Type: application/json" \
-  -d '{"monthly_fee": 29.99, "usage_hours": 42.5, "support_requests": 1,
-       "account_age_months": 18, "failed_payments": 0, "region": "europe",
-       "device_type": "mobile", "payment_method": "card", "autopay_enabled": 1}'
-
 curl "http://127.0.0.1:8000/dataset/preview?n=3"
 curl http://127.0.0.1:8000/dataset/info
 curl http://127.0.0.1:8000/dataset/split-info
@@ -181,6 +174,53 @@ and after `/model/train?class_weight=balanced` (`trained_at` is in UTC):
 }
 ```
 
+## Prediction
+
+`POST /predict` takes one customer object or a list of them and always answers with a list: one prediction per
+customer, in the order they were sent. `/docs` shows both request examples and the answers to them.
+
+```bash
+curl -X POST http://127.0.0.1:8000/model/train   # once, if no model is trained yet
+
+curl -X POST http://127.0.0.1:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"monthly_fee": 29.99, "usage_hours": 42.5, "support_requests": 1,
+       "account_age_months": 18, "failed_payments": 0, "region": "europe",
+       "device_type": "mobile", "payment_method": "card", "autopay_enabled": 1}'
+
+curl -X POST http://127.0.0.1:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '[{"monthly_fee": 29.99, "usage_hours": 42.5, "support_requests": 1,
+        "account_age_months": 18, "failed_payments": 0, "region": "europe",
+        "device_type": "mobile", "payment_method": "card", "autopay_enabled": 1},
+       {"monthly_fee": 59.99, "usage_hours": 3.0, "support_requests": 6,
+        "account_age_months": 2, "failed_payments": 3, "region": "asia",
+        "device_type": "desktop", "payment_method": "crypto", "autopay_enabled": 0}]'
+```
+
+Answer to the list from the model trained without class weights (probabilities rounded):
+
+```json
+[
+  {"churn": 0, "probability_no_churn": 0.957, "probability_churn": 0.043},
+  {"churn": 1, "probability_no_churn": 0.189, "probability_churn": 0.811}
+]
+```
+
+`churn` is `1` when `probability_churn` is above 0.5. A model trained with `class_weight=balanced` overstates it
+(`0.164` and `0.942` for the same customers), so read it as a risk score rather than the real chance of leaving.
+
+Before the first training the endpoint answers `503`:
+
+```json
+{"detail": "Churn model is not trained yet, call POST /model/train first"}
+```
+
+Customers that fail validation get `422`. The body is one customer or a list, so the error `loc` names the type it was
+checked against, for example `["body", "FeatureVectorChurn", "region"]`.
+
+How it works: [docs/prediction.md](docs/prediction.md).
+
 ## Tests
 
 ```bash
@@ -202,9 +242,9 @@ data/
 models/                # trained model saved by /model/train, not tracked by git
 src/
 ├── main.py            # FastAPI app, startup, router registration
-├── core/              # constants, exceptions, error handlers
+├── core/              # constants, /docs examples, exceptions, error handlers
 ├── routers/           # HTTP endpoints
-├── services/          # dataset loading, statistics, preprocessing, train/test split, model training and storage
+├── services/          # dataset loading, statistics, preprocessing, train/test split, model training, storage and prediction
 └── schemas/           # Pydantic models of features, dataset rows and responses
 tests/
 ├── unit/
