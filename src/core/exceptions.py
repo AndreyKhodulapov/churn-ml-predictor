@@ -7,3 +7,7 @@ class DatasetNotTrainableError(Exception):
 
     The message names row counts and classes only, so it is safe to return to the client.
     """
+
+
+class ModelLoadError(Exception):
+    """The saved churn model file cannot be read or does not hold a churn model."""

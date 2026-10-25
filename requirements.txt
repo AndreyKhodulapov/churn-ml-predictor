@@ -3,3 +3,4 @@ uvicorn[standard]>=0.30
 pydantic>=2.7,<3
 pandas>=3.0,<4
 scikit-learn>=1.9,<1.10
+joblib>=1.4,<2
