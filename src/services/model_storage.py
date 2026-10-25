@@ -1,13 +1,15 @@
 import logging
+import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 
 import joblib
 import sklearn
 from sklearn.pipeline import Pipeline
 
-from src.core.constants import ClassWeight
+from src.core.constants import MODEL_PATH, ClassWeight
 from src.core.exceptions import ModelLoadError
 from src.schemas.learning import TrainMetrics
 
@@ -59,3 +61,30 @@ def load_churn_model(path: Path) -> TrainedChurnModel:
             sklearn.__version__,
         )
     return model
+
+
+class ChurnModelStore:
+    """The churn model the service currently serves, kept in memory and in the file at path."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._model: TrainedChurnModel | None = None
+        # /model/train runs in a thread pool: two trainings finishing together must not leave
+        # one model on disk and the other in memory.
+        self._lock = threading.Lock()
+
+    @property
+    def model(self) -> TrainedChurnModel | None:
+        return self._model
+
+    def save(self, model: TrainedChurnModel) -> None:
+        """Write the model to disk first and serve it only then, so a failed write keeps the previous one."""
+        with self._lock:
+            save_churn_model(model, self.path)
+            self._model = model
+
+
+@lru_cache
+def get_model_store() -> ChurnModelStore:
+    """One store for the whole service, so a model trained by one request is seen by the following ones."""
+    return ChurnModelStore(MODEL_PATH)

@@ -29,3 +29,5 @@ CLASS_SHARE_TOLERANCE = 0.01
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 DATASET_PATH = DATA_DIR / "churn_dataset.csv"
+MODELS_DIR = PROJECT_ROOT / "models"
+MODEL_PATH = MODELS_DIR / "churn_model.joblib"

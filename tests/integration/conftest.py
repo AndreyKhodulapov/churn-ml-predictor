@@ -3,7 +3,20 @@ from httpx import ASGITransport, AsyncClient
 
 from src.main import app
 from src.services.dataset import DatasetProcessor, get_dataset
+from src.services.model_storage import ChurnModelStore, get_model_store
 from src.services.preprocessing import get_split
+
+
+@pytest.fixture(autouse=True)
+def model_store(tmp_path, monkeypatch) -> ChurnModelStore:
+    """Point the service store at a temporary file, so models trained by tests never land in the project models/.
+
+    The path is patched rather than the dependency overridden: tests clear dependency_overrides on their own.
+    """
+    monkeypatch.setattr("src.services.model_storage.MODEL_PATH", tmp_path / "models" / "churn_model.joblib")
+    get_model_store.cache_clear()
+    yield get_model_store()
+    get_model_store.cache_clear()
 
 
 @pytest.fixture

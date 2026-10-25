@@ -1,8 +1,11 @@
+from datetime import UTC, datetime
+
 import pandas as pd
 import pytest
 
 from src.core.exceptions import DatasetLoadError
 from src.main import app
+from src.services.model_storage import load_churn_model
 from src.services.preprocessing import SplitData, get_split
 
 
@@ -48,6 +51,38 @@ async def test_train_with_balanced_class_weight_finds_more_churners(client):
     assert balanced["accuracy"] < default["accuracy"]
 
 
+async def test_train_serves_and_saves_the_trained_model(client, model_store):
+    before = datetime.now(UTC)
+    response = await client.post("/model/train", params={"class_weight": "balanced"})
+
+    model = model_store.model
+    assert model.metrics.model_dump() == response.json()
+    assert model.class_weight == "balanced"
+    assert before <= model.trained_at <= datetime.now(UTC)
+    saved = load_churn_model(model_store.path)
+    assert (saved.metrics, saved.class_weight, saved.trained_at) == (model.metrics, "balanced", model.trained_at)
+
+
+async def test_train_replaces_the_previous_model(client, model_store):
+    await client.post("/model/train", params={"class_weight": "balanced"})
+    response = await client.post("/model/train")
+
+    assert model_store.model.class_weight is None
+    assert load_churn_model(model_store.path).metrics.model_dump() == response.json()
+
+
+async def test_failed_training_keeps_the_previous_model(client, model_store, serve_csv, csv_header):
+    await client.post("/model/train")
+    trained = model_store.model
+    serve_csv(f"{csv_header}\n")
+
+    response = await client.post("/model/train")
+
+    assert response.status_code == 409
+    assert model_store.model is trained
+    assert load_churn_model(model_store.path).trained_at == trained.trained_at
+
+
 async def test_train_rejects_unknown_class_weight(client):
     response = await client.post("/model/train", params={"class_weight": "heavy"})
 
@@ -62,7 +97,7 @@ async def test_train_fits_and_scores_served_split(client, separable_split):
     assert response.json() == {"accuracy": 1.0, "f1": 1.0}
 
 
-async def test_train_answers_503_without_dataset(client):
+async def test_train_answers_503_without_dataset(client, model_store):
     def broken_split():
         raise DatasetLoadError("Dataset file not found: /secret/path.csv")
 
@@ -72,6 +107,8 @@ async def test_train_answers_503_without_dataset(client):
 
     assert response.status_code == 503
     assert response.json() == {"detail": "Dataset is not available"}
+    assert model_store.model is None
+    assert not model_store.path.exists()
 
 
 async def test_train_answers_409_on_header_only_dataset(client, serve_csv, csv_header):

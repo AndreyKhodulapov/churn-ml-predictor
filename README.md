@@ -5,8 +5,9 @@ the service next month (`churn = 1`) or stay (`churn = 0`), based on their
 billing, usage and support history.
 
 Current state: the API validates customer features, serves the training
-dataset and trains a logistic regression on it. `POST /predict` echoes the
-validated features back until it is wired to the trained model.
+dataset, trains a logistic regression on it and saves the trained model to
+disk. `POST /predict` echoes the validated features back until it is wired to
+the trained model.
 
 ## Endpoints
 
@@ -17,7 +18,7 @@ validated features back until it is wired to the trained model.
 | GET | `/dataset/preview?n=5` | first `n` rows of the training dataset, `1 <= n <= 100` |
 | GET | `/dataset/info` | row and column counts, feature names, churn class distribution |
 | GET | `/dataset/split-info` | train and test sizes, churn class distribution in each part |
-| POST | `/model/train?class_weight=balanced` | train the churn model, return accuracy and churn F1 on the test part; `class_weight` is optional |
+| POST | `/model/train?class_weight=balanced` | train the churn model, save it, return accuracy and churn F1 on the test part; `class_weight` is optional |
 
 Endpoints that need the dataset answer `503` while it is missing or broken, and `409` with the reason while it
 cannot be split and trained on (no labeled rows, a single churn class, too few rows); the service itself keeps running.
@@ -140,6 +141,13 @@ The first one is trained without class weights: with 20% churners the model almo
 accuracy is close to the 0.7975 of always answering "stays" and its F1 is near zero. `class_weight=balanced`
 weights churners up: the model catches about half of them at the cost of accuracy.
 
+## Trained model
+
+Every successful `/model/train` saves the model to `models/churn_model.joblib`, together with its test metrics,
+training time, class weight and the scikit-learn version it was trained with. The file is written to a temporary name
+and renamed, so a crash during the write keeps the previous model intact. A training that fails (`503`, `409`) leaves
+the previous model in place.
+
 ## Tests
 
 ```bash
@@ -158,11 +166,12 @@ ruff check .
 ```
 data/
 └── churn_dataset.csv  # training dataset
+models/                # trained model saved by /model/train, not tracked by git
 src/
 ├── main.py            # FastAPI app, startup, router registration
 ├── core/              # constants, exceptions, error handlers
 ├── routers/           # HTTP endpoints
-├── services/          # dataset loading, statistics, preprocessing, train/test split, model training
+├── services/          # dataset loading, statistics, preprocessing, train/test split, model training and storage
 └── schemas/           # Pydantic models of features, dataset rows and responses
 tests/
 ├── unit/

@@ -8,10 +8,17 @@ import pandas as pd
 import pytest
 import sklearn
 
+from src.core.constants import MODEL_PATH
 from src.core.exceptions import ModelLoadError
 from src.schemas.learning import TrainMetrics
 from src.services.learning import train_churn_model
-from src.services.model_storage import TrainedChurnModel, load_churn_model, save_churn_model
+from src.services.model_storage import (
+    ChurnModelStore,
+    TrainedChurnModel,
+    get_model_store,
+    load_churn_model,
+    save_churn_model,
+)
 
 
 @pytest.fixture
@@ -104,3 +111,38 @@ def test_load_warns_about_model_saved_with_other_sklearn_version(trained_model, 
 
     assert loaded.sklearn_version == "1.0.0"
     assert f"saved with scikit-learn 1.0.0 and runs on {sklearn.__version__}" in caplog.text
+
+
+def test_store_starts_without_model(model_path):
+    assert ChurnModelStore(model_path).model is None
+
+
+def test_store_serves_saved_model_and_writes_it_to_disk(trained_model, model_path):
+    store = ChurnModelStore(model_path)
+
+    store.save(trained_model)
+
+    assert store.model is trained_model
+    assert load_churn_model(model_path).trained_at == trained_model.trained_at
+
+
+def test_store_keeps_previous_model_when_write_fails(trained_model, model_path, monkeypatch):
+    store = ChurnModelStore(model_path)
+    store.save(trained_model)
+
+    def failing_save(model, path):
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr("src.services.model_storage.save_churn_model", failing_save)
+    with pytest.raises(OSError):
+        store.save(replace(trained_model, metrics=TrainMetrics(accuracy=1.0, f1=1.0)))
+
+    assert store.model is trained_model
+
+
+def test_service_uses_one_store_at_default_model_path():
+    get_model_store.cache_clear()
+
+    assert get_model_store() is get_model_store()
+    assert get_model_store().path == MODEL_PATH
+    get_model_store.cache_clear()
