@@ -18,3 +18,10 @@ class FeatureVectorChurn(BaseSchema):
     device_type: DeviceType
     payment_method: PaymentMethod
     autopay_enabled: Literal[0, 1]
+
+
+class PredictionResponseChurn(BaseSchema):
+    """Churn prediction response."""
+
+    churn: Literal[0, 1]
+    probability: float
