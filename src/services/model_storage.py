@@ -11,7 +11,7 @@ from sklearn.pipeline import Pipeline
 
 from src.core.constants import MODEL_PATH, ClassWeight
 from src.core.exceptions import ModelLoadError
-from src.schemas.learning import TrainMetrics
+from src.schemas.learning import ModelStatus, TrainMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +82,15 @@ class ChurnModelStore:
         with self._lock:
             save_churn_model(model, self.path)
             self._model = model
+
+    def get_status(self) -> ModelStatus:
+        # Read once: a training finishing meanwhile must not mix the fields of two models.
+        model = self._model
+        if model is None:
+            return ModelStatus(trained=False)
+        return ModelStatus(
+            trained=True, trained_at=model.trained_at, metrics=model.metrics, class_weight=model.class_weight
+        )
 
 
 @lru_cache

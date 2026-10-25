@@ -83,6 +83,41 @@ async def test_failed_training_keeps_the_previous_model(client, model_store, ser
     assert load_churn_model(model_store.path).trained_at == trained.trained_at
 
 
+async def test_status_reports_untrained_model(client):
+    response = await client.get("/model/status")
+
+    assert response.status_code == 200
+    assert response.json() == {"trained": False, "trained_at": None, "metrics": None, "class_weight": None}
+
+
+async def test_status_reports_the_last_training(client, model_store):
+    await client.post("/model/train")
+    metrics = (await client.post("/model/train", params={"class_weight": "balanced"})).json()
+
+    response = await client.get("/model/status")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["trained"] is True
+    assert body["metrics"] == metrics
+    assert body["class_weight"] == "balanced"
+    assert datetime.fromisoformat(body["trained_at"]) == model_store.model.trained_at
+
+
+async def test_status_does_not_need_the_dataset(client, model_store):
+    await client.post("/model/train")
+
+    def broken_split():
+        raise DatasetLoadError("Dataset file not found: /secret/path.csv")
+
+    app.dependency_overrides[get_split] = broken_split
+    response = await client.get("/model/status")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["trained"] is True
+
+
 async def test_train_rejects_unknown_class_weight(client):
     response = await client.post("/model/train", params={"class_weight": "heavy"})
 

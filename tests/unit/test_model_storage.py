@@ -10,7 +10,7 @@ import sklearn
 
 from src.core.constants import MODEL_PATH
 from src.core.exceptions import ModelLoadError
-from src.schemas.learning import TrainMetrics
+from src.schemas.learning import ModelStatus, TrainMetrics
 from src.services.learning import train_churn_model
 from src.services.model_storage import (
     ChurnModelStore,
@@ -138,6 +138,22 @@ def test_store_keeps_previous_model_when_write_fails(trained_model, model_path, 
         store.save(replace(trained_model, metrics=TrainMetrics(accuracy=1.0, f1=1.0)))
 
     assert store.model is trained_model
+
+
+def test_store_status_reports_untrained_model(model_path):
+    assert ChurnModelStore(model_path).get_status() == ModelStatus(trained=False)
+
+
+def test_store_status_reports_served_model(trained_model, model_path):
+    store = ChurnModelStore(model_path)
+    store.save(trained_model)
+
+    assert store.get_status() == ModelStatus(
+        trained=True,
+        trained_at=datetime(2026, 10, 25, 12, 30, tzinfo=UTC),
+        metrics=TrainMetrics(accuracy=0.75, f1=0.5),
+        class_weight="balanced",
+    )
 
 
 def test_service_uses_one_store_at_default_model_path():

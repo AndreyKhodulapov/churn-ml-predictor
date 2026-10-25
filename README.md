@@ -19,6 +19,7 @@ the trained model.
 | GET | `/dataset/info` | row and column counts, feature names, churn class distribution |
 | GET | `/dataset/split-info` | train and test sizes, churn class distribution in each part |
 | POST | `/model/train?class_weight=balanced` | train the churn model, save it, return accuracy and churn F1 on the test part; `class_weight` is optional |
+| GET | `/model/status` | whether a model is trained, when, with which class weight and its test metrics |
 
 Endpoints that need the dataset answer `503` while it is missing or broken, and `409` with the reason while it
 cannot be split and trained on (no labeled rows, a single churn class, too few rows); the service itself keeps running.
@@ -89,6 +90,7 @@ curl http://127.0.0.1:8000/dataset/info
 curl http://127.0.0.1:8000/dataset/split-info
 curl -X POST http://127.0.0.1:8000/model/train
 curl -X POST "http://127.0.0.1:8000/model/train?class_weight=balanced"
+curl http://127.0.0.1:8000/model/status
 ```
 
 `/dataset/info` response for the bundled dataset:
@@ -147,6 +149,23 @@ Every successful `/model/train` saves the model to `models/churn_model.joblib`, 
 training time, class weight and the scikit-learn version it was trained with. The file is written to a temporary name
 and renamed, so a crash during the write keeps the previous model intact. A training that fails (`503`, `409`) leaves
 the previous model in place.
+
+`/model/status` before the first training:
+
+```json
+{"trained": false, "trained_at": null, "metrics": null, "class_weight": null}
+```
+
+and after `/model/train?class_weight=balanced` (`trained_at` is in UTC):
+
+```json
+{
+  "trained": true,
+  "trained_at": "2026-10-25T16:15:09.999161Z",
+  "metrics": {"accuracy": 0.5875, "f1": 0.34782608695652173},
+  "class_weight": "balanced"
+}
+```
 
 ## Tests
 

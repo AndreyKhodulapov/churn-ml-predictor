@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from src.core.constants import ClassWeight
-from src.schemas.learning import TrainMetrics
+from src.schemas.learning import ModelStatus, TrainMetrics
 from src.services.learning import evaluate_churn_model, train_churn_model
 from src.services.model_storage import ChurnModelStore, TrainedChurnModel, get_model_store
 from src.services.preprocessing import SplitData, get_split
@@ -24,3 +24,8 @@ def train_model(
     metrics = evaluate_churn_model(pipeline, split.X_test, split.y_test)
     store.save(TrainedChurnModel(pipeline, metrics, class_weight))
     return metrics
+
+
+@router.get("/status")
+def get_model_status(store: Annotated[ChurnModelStore, Depends(get_model_store)]) -> ModelStatus:
+    return store.get_status()
