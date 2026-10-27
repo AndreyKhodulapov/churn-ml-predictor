@@ -4,6 +4,7 @@ from unittest.mock import Mock
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.utils.validation import check_is_fitted
 
@@ -42,14 +43,16 @@ def X_train(make_X) -> pd.DataFrame:
 y_train = pd.Series([0, 1, 0, 1])
 
 
-def test_churn_pipeline_fills_gaps_transforms_and_classifies():
-    pipeline = build_churn_pipeline(NUMERIC_FEATURES, CATEGORICAL_FEATURES)
+def test_churn_pipeline_fills_gaps_transforms_and_classifies_with_given_classifier():
+    classifier = LogisticRegression()
+    pipeline = build_churn_pipeline(NUMERIC_FEATURES, CATEGORICAL_FEATURES, classifier)
 
     assert list(pipeline.named_steps) == ["impute", "transform", "model"]
+    assert pipeline.named_steps["model"] is classifier
 
 
 def test_fitted_churn_pipeline_predicts_raw_rows_with_gaps(X_train):
-    pipeline = build_churn_pipeline(NUMERIC_FEATURES, CATEGORICAL_FEATURES).fit(X_train, y_train)
+    pipeline = build_churn_pipeline(NUMERIC_FEATURES, CATEGORICAL_FEATURES, LogisticRegression()).fit(X_train, y_train)
 
     predictions = pipeline.predict(X_train)
 
@@ -59,7 +62,7 @@ def test_fitted_churn_pipeline_predicts_raw_rows_with_gaps(X_train):
 
 
 def test_churn_pipeline_learns_gap_filling_from_train_part(X_train, make_X):
-    pipeline = build_churn_pipeline(NUMERIC_FEATURES, CATEGORICAL_FEATURES).fit(X_train, y_train)
+    pipeline = build_churn_pipeline(NUMERIC_FEATURES, CATEGORICAL_FEATURES, LogisticRegression()).fit(X_train, y_train)
     X_test = make_X(1, monthly_fee=[None])
 
     filled = pipeline.named_steps["impute"].transform(X_test)

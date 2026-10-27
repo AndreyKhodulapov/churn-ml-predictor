@@ -1,4 +1,5 @@
 import pandas as pd
+from sklearn.base import ClassifierMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score
@@ -31,11 +32,9 @@ def build_feature_transformer(
 
 
 def build_churn_pipeline(
-    numeric_features: tuple[str, ...],
-    categorical_features: tuple[str, ...],
-    class_weight: ClassWeight | None = None,
+    numeric_features: tuple[str, ...], categorical_features: tuple[str, ...], classifier: ClassifierMixin
 ) -> Pipeline:
-    """Unfitted pipeline from raw features to churn: fill gaps, transform features, classify.
+    """Unfitted pipeline from raw features to churn: fill gaps, transform features, classify with classifier.
 
     Gap filling is a step of the pipeline, so fit() learns its statistics from the train part only
     and the fitted pipeline accepts the same raw rows as the dataset.
@@ -45,14 +44,15 @@ def build_churn_pipeline(
             # The imputer returns a DataFrame with the original names, so the next step picks columns by name.
             ("impute", build_imputer(numeric_features, categorical_features)),
             ("transform", build_feature_transformer(numeric_features, categorical_features)),
-            ("model", LogisticRegression(class_weight=class_weight)),
+            ("model", classifier),
         ]
     )
 
 
 def train_churn_model(X_train: pd.DataFrame, y_train: pd.Series, class_weight: ClassWeight | None = None) -> Pipeline:
     """Fit a new churn pipeline on the train part; every call returns a separate model."""
-    pipeline = build_churn_pipeline(NUMERIC_FEATURES, CATEGORICAL_FEATURES, class_weight)
+    classifier = LogisticRegression(class_weight=class_weight)
+    pipeline = build_churn_pipeline(NUMERIC_FEATURES, CATEGORICAL_FEATURES, classifier)
     return pipeline.fit(X_train, y_train)
 
 
