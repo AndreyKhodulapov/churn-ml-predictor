@@ -1,7 +1,8 @@
 # Training a churn classifier
 
-Short notes on the baseline model: what it computes, why its features are
-prepared the way they are, and how its quality is measured.
+Short notes on the two churn models: what they compute, why their features
+are prepared the way they are, how they are configured and how their quality
+is measured.
 
 ## Logistic regression
 
@@ -19,6 +20,29 @@ prepared the way they are, and how its quality is measured.
 - scikit-learn applies L2 regularization by default (`C=1.0`, smaller means
   stronger): large weights are penalized, which reduces overfitting.
 
+## Random forest
+
+- An ensemble of decision trees. Each tree is grown on a bootstrap sample of
+  the train rows (drawn with replacement) and looks at a random subset of the
+  features at every split (`max_features="sqrt"`). The forest averages the
+  class probabilities of its trees.
+- A single deep tree memorizes the train part. Trees grown on different
+  samples and features make different mistakes, so their average keeps the
+  flexibility of a tree and loses most of its variance.
+- Trees find thresholds and interactions on their own, such as "failed
+  payments only matter without autopay", which a linear model needs as
+  hand-made features. The price is a model that is harder to explain.
+- Main hyperparameters: `n_estimators` (more trees give a stabler answer and
+  slower training, but do not overfit), `max_depth` and `min_samples_leaf`
+  (limit the size of a tree: smaller trees overfit less and give smoother
+  probabilities), `max_features` and `class_weight`.
+- The bootstrap samples and feature subsets depend on `random_state`. The
+  service fixes it to 42 unless the client sends its own, so the same config
+  trained twice gives the same forest.
+- On the bundled dataset fully grown trees fit the noise of 1600 rows: the
+  balanced forest reaches churn F1 0.24. Limiting the depth to 5 raises it to
+  0.31, still below 0.35 of the balanced logistic regression.
+
 ## Why numeric features are scaled
 
 - Regularization penalizes all weights by the same rule. A fee in tens and a
@@ -28,7 +52,9 @@ prepared the way they are, and how its quality is measured.
 - Scaled features also make the solver converge in fewer iterations.
 - A 0/1 flag such as `autopay_enabled` is already on that scale and is passed
   through as it is.
-- Tree models split on thresholds and do not need scaling.
+- Tree models split on thresholds and do not need scaling. The pipeline
+  scales for the random forest too: a threshold moves with the scale, but the
+  splits stay the same, and both models share one pipeline.
 
 ## Why categorical features are one-hot encoded
 
@@ -51,6 +77,22 @@ prepared the way they are, and how its quality is measured.
   one object.
 - Cross-validation and hyperparameter search take the pipeline as is and refit
   the preprocessing inside every fold.
+
+## Training config
+
+- `POST /model/train` takes `{"model_type": ..., "hyperparameters": {...}}`.
+  The model class is looked up by type, and the hyperparameters are set over
+  its scikit-learn defaults with `set_params`.
+- Names are checked before training against `get_params()`, the list of
+  everything the model accepts. Values are checked by scikit-learn only in
+  `fit()`: a single value out of range raises `InvalidParameterError`, a
+  forbidden combination (`l1_ratio=1`, an l1 penalty, with the default
+  `lbfgs` solver) a plain `ValueError`. Both become `422` with the reason.
+- `/model/status` reads the hyperparameters back from the fitted classifier
+  with `get_params()`, so it shows the defaults the client did not send,
+  next to the metrics they produced.
+- Without a body the config defaults to a logistic regression with the
+  scikit-learn defaults.
 
 ## Metrics
 
@@ -79,5 +121,11 @@ prepared the way they are, and how its quality is measured.
 - The model then finds more churners: F1 grows to 0.35 while accuracy drops to
   0.59. Which trade-off is better depends on the cost of a missed churner
   versus a false alarm.
+- A random forest takes the same `class_weight`: the weights count in the
+  split criterion of every tree. `"balanced_subsample"` recomputes them on
+  every bootstrap sample.
+- Class weights are set as a hyperparameter, `{"class_weight": "balanced"}`.
+  A dict of weights cannot be sent: JSON object keys are strings, while the
+  model expects the classes `0` and `1`.
 - Other ways to handle imbalance: moving the decision threshold below 0.5 or
   resampling the train part.

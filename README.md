@@ -5,8 +5,9 @@ the service next month (`churn = 1`) or stay (`churn = 0`), based on their
 billing, usage and support history.
 
 Current state: the API validates customer features, serves the training
-dataset, trains a logistic regression on it, keeps the trained model on
-disk across restarts and predicts churn of new customers with it.
+dataset, trains a logistic regression or a random forest on it with the
+requested hyperparameters, keeps the trained model on disk across restarts
+and predicts churn of new customers with it.
 
 ## Endpoints
 
@@ -17,8 +18,8 @@ disk across restarts and predicts churn of new customers with it.
 | GET | `/dataset/preview?n=5` | first `n` rows of the training dataset, `1 <= n <= 100` |
 | GET | `/dataset/info` | row and column counts, feature names, churn class distribution |
 | GET | `/dataset/split-info` | train and test sizes, churn class distribution in each part |
-| POST | `/model/train?class_weight=balanced` | train the churn model, save it, return accuracy and churn F1 on the test part; `class_weight` is optional |
-| GET | `/model/status` | whether a model is trained, when, with which class weight and its test metrics |
+| POST | `/model/train` | train the churn model of the type and with the hyperparameters from the optional JSON body, save it, return accuracy and churn F1 on the test part |
+| GET | `/model/status` | whether a model is trained, when, its type, main hyperparameters and test metrics |
 
 Endpoints that need the dataset answer `503` while it is missing or broken, and `409` with the reason while it
 cannot be split and trained on (no labeled rows, a single churn class, too few rows); the service itself keeps running.
@@ -82,7 +83,9 @@ curl "http://127.0.0.1:8000/dataset/preview?n=3"
 curl http://127.0.0.1:8000/dataset/info
 curl http://127.0.0.1:8000/dataset/split-info
 curl -X POST http://127.0.0.1:8000/model/train
-curl -X POST "http://127.0.0.1:8000/model/train?class_weight=balanced"
+curl -X POST http://127.0.0.1:8000/model/train \
+  -H "Content-Type: application/json" \
+  -d '{"model_type": "random_forest", "hyperparameters": {"n_estimators": 300, "max_depth": 5, "class_weight": "balanced"}}'
 curl http://127.0.0.1:8000/model/status
 ```
 
@@ -122,31 +125,55 @@ and its shares, taken over all rows, sum to less than 1 when such rows exist.
 }
 ```
 
+## Training config
+
+`POST /model/train` takes an optional JSON body:
+
+```json
+{"model_type": "random_forest", "hyperparameters": {"n_estimators": 300, "max_depth": 5}}
+```
+
+- `model_type` is `logreg` (`LogisticRegression`) or `random_forest` (`RandomForestClassifier`), `logreg` by default.
+- `hyperparameters` are passed to that model under their scikit-learn names and set over its defaults; `{}` by
+  default. Without a body the service trains a logistic regression with the scikit-learn defaults.
+- `random_state` is fixed to 42 unless sent, so training the same config twice gives the same model.
+- A field other than these two, or an unknown `model_type`, is rejected with `422` by the schema. A hyperparameter
+  the model does not know, a value it refuses or a combination it forbids gets `422` with the reason:
+
+```json
+{"detail": "Cannot train logreg with these hyperparameters: The 'C' parameter of LogisticRegression must be a float in the range (0.0, inf]. Got 0 instead."}
+```
+
+- `class_weight` can be `"balanced"` but not a dict: JSON object keys are strings, while the model expects the
+  classes `0` and `1` as keys.
+
 `/model/train` responses for the bundled dataset:
 
-```json
-{"accuracy": 0.79, "f1": 0.045454545454545456}
-```
+| `model_type` | `hyperparameters` | accuracy | churn F1 |
+|---|---|---|---|
+| `logreg` | `{}` | 0.79 | 0.045 |
+| `logreg` | `{"class_weight": "balanced"}` | 0.5875 | 0.348 |
+| `random_forest` | `{}` | 0.7825 | 0.171 |
+| `random_forest` | `{"class_weight": "balanced"}` | 0.695 | 0.238 |
+| `random_forest` | `{"n_estimators": 300, "max_depth": 5, "class_weight": "balanced"}` | 0.62 | 0.309 |
 
-```json
-{"accuracy": 0.5875, "f1": 0.34782608695652173}
-```
-
-The first one is trained without class weights: with 20% churners the model almost never predicts churn, so its
-accuracy is close to the 0.7975 of always answering "stays" and its F1 is near zero. `class_weight=balanced`
-weights churners up: the model catches about half of them at the cost of accuracy.
+Without class weights, with 20% churners, the logistic regression almost never predicts churn: its accuracy is close
+to the 0.7975 of always answering "stays" and its F1 is near zero. `"class_weight": "balanced"` weights churners up,
+and the model catches about half of them at the cost of accuracy. A random forest of fully grown trees fits the noise
+of the train part; shallow trees do better, but on this dataset the balanced logistic regression is still ahead.
 
 ## Trained model
 
 Every successful `/model/train` saves the model to `models/churn_model.joblib`, together with its test metrics,
-training time, class weight and the scikit-learn version it was trained with. The file is written to a temporary name
-and renamed, so a crash during the write keeps the previous model intact. A training that fails (`503`, `409`) leaves
-the previous model in place.
+training time, model type, requested hyperparameters and the scikit-learn version it was trained with. The file is
+written to a temporary name and renamed, so a crash during the write keeps the previous model intact. A training that
+fails (`503`, `409`, `422`) leaves the previous model in place.
 
 At startup the service loads the saved model, so `/model/status` reports the same model after a restart. Without the
 file the service starts untrained. A file that cannot be read does not stop the service either: the reason is logged
 and the service starts untrained until the next `/model/train` writes a new model over it. A model saved with another
-scikit-learn version is loaded with a warning, since its predictions may differ.
+scikit-learn version is loaded with a warning, since its predictions may differ. A file saved before the model type
+and hyperparameters were stored is rejected the same way as a broken one: retrain the model once.
 
 To check it by hand: train a model, restart the service and compare `/model/status` before and after.
 
@@ -160,19 +187,30 @@ curl http://127.0.0.1:8000/model/status   # the same trained_at and metrics
 `/model/status` before the first training:
 
 ```json
-{"trained": false, "trained_at": null, "metrics": null, "class_weight": null}
+{"trained": false, "trained_at": null, "metrics": null, "model_type": null, "hyperparameters": null}
 ```
 
-and after `/model/train?class_weight=balanced` (`trained_at` is in UTC):
+and after training a random forest with `{"n_estimators": 300, "max_depth": 5, "class_weight": "balanced"}`
+(`trained_at` is in UTC):
 
 ```json
 {
   "trained": true,
-  "trained_at": "2026-10-25T16:15:09.999161Z",
-  "metrics": {"accuracy": 0.5875, "f1": 0.34782608695652173},
-  "class_weight": "balanced"
+  "trained_at": "2026-10-27T10:11:34.699584Z",
+  "metrics": {"accuracy": 0.62, "f1": 0.3090909090909091},
+  "model_type": "random_forest",
+  "hyperparameters": {
+    "n_estimators": 300,
+    "max_depth": 5,
+    "min_samples_leaf": 1,
+    "max_features": "sqrt",
+    "class_weight": "balanced"
+  }
 }
 ```
+
+`hyperparameters` lists the main ones of the model type and every requested one, with the values the model was
+trained with: `min_samples_leaf` and `max_features` were not sent and show the scikit-learn defaults.
 
 ## Prediction
 
@@ -207,8 +245,9 @@ Answer to the list from the model trained without class weights (probabilities r
 ]
 ```
 
-`churn` is `1` when `probability_churn` is above 0.5. A model trained with `class_weight=balanced` overstates it
-(`0.164` and `0.942` for the same customers), so read it as a risk score rather than the real chance of leaving.
+`churn` is `1` when `probability_churn` is above 0.5. A logistic regression trained with `"class_weight": "balanced"`
+overstates it (`0.164` and `0.942` for the same customers), so read it as a risk score rather than the real chance of
+leaving.
 
 Before the first training the endpoint answers `503`:
 
@@ -219,7 +258,8 @@ Before the first training the endpoint answers `503`:
 Customers that fail validation get `422`. The body is one customer or a list, so the error `loc` names the type it was
 checked against, for example `["body", "FeatureVectorChurn", "region"]`.
 
-How it works: [docs/prediction.md](docs/prediction.md).
+How it works: [docs/prediction.md](docs/prediction.md). The models and their hyperparameters:
+[docs/model_training.md](docs/model_training.md).
 
 ## Tests
 

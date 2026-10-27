@@ -28,8 +28,8 @@ def predict(
     order they were sent: the predicted class `churn` (1 means the customer leaves) and the probabilities of both
     classes, which sum to 1. The class is 1 when `probability_churn` is above 0.5.
 
-    A model trained with `class_weight=balanced` overstates `probability_churn`: read it as a risk score to rank
-    customers by rather than as the real chance of leaving.
+    A model trained with the hyperparameter `"class_weight": "balanced"` overstates `probability_churn`: read it as a
+    risk score to rank customers by rather than as the real chance of leaving.
 
     Answers `503` until a model is trained with `POST /model/train`.
     """

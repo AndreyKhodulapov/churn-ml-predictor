@@ -8,6 +8,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 
 from src.core.exceptions import DatasetLoadError
+from src.core.openapi_examples import TRAIN_EXAMPLES
 from src.main import app, lifespan
 from src.services.model_storage import get_model_store, load_churn_model
 from src.services.preprocessing import SplitData, get_split
@@ -108,6 +109,27 @@ async def test_failed_training_keeps_the_previous_model(client, model_store, ser
     assert response.status_code == 409
     assert model_store.model is trained
     assert load_churn_model(model_store.path).trained_at == trained.trained_at
+
+
+async def test_openapi_shows_optional_train_config_with_examples(client):
+    response = await client.get("/openapi.json")
+
+    request_body = response.json()["paths"]["/model/train"]["post"]["requestBody"]
+    assert not request_body.get("required", False)
+    examples = request_body["content"]["application/json"]["examples"]
+    assert {name: example["value"] for name, example in examples.items()} == {
+        name: example["value"] for name, example in TRAIN_EXAMPLES.items()
+    }
+
+
+@pytest.mark.parametrize("name", TRAIN_EXAMPLES)
+async def test_train_accepts_every_docs_example(client, model_store, name):
+    config = TRAIN_EXAMPLES[name]["value"]
+
+    response = await client.post("/model/train", json=config)
+
+    assert response.status_code == 200
+    assert model_store.model.model_type == config["model_type"]
 
 
 async def test_status_reports_untrained_model(client):

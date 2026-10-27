@@ -21,6 +21,10 @@ disk, what is saved with it and what can break when it is loaded back.
 - Loading imports that class by its path and restores the attributes, so the
   file is tied to the code: renaming or moving the class breaks every file
   saved before.
+- Adding a field to the class does not break loading, but an old file comes
+  back without the new attribute and fails only once it is read. The service
+  checks at load that every field of `TrainedChurnModel` is present and
+  rejects an older file like a broken one.
 - Loading can run arbitrary code: an object can tell pickle to call any
   function when it is rebuilt, `os.system` included. Only files the service
   wrote itself may be loaded, never one uploaded by a user.
@@ -46,7 +50,7 @@ disk, what is saved with it and what can break when it is loaded back.
 - The fitted pipeline, not the bare classifier: the imputer, scaler and
   encoder are part of the model, and without them it cannot read raw rows.
 - Metadata needed to describe it after a restart: test metrics, training
-  time, hyperparameters (here the class weight).
+  time, model type and hyperparameters.
 - The versions of the libraries it was trained with.
 - One file holding the pipeline and its metadata cannot get out of sync. A
   separate JSON next to the model can be read without unpickling, but the two

@@ -33,6 +33,27 @@ PREDICT_EXAMPLES: dict[str, Any] = {
 LOYAL_CUSTOMER_PREDICTION: dict[str, Any] = {"churn": 0, "probability_no_churn": 0.957, "probability_churn": 0.043}
 RISKY_CUSTOMER_PREDICTION: dict[str, Any] = {"churn": 1, "probability_no_churn": 0.189, "probability_churn": 0.811}
 
+# Training configs shown as /model/train request examples in /docs and reused by the tests.
+TRAIN_EXAMPLES: dict[str, Any] = {
+    "logreg_defaults": {
+        "summary": "Logistic regression with scikit-learn defaults",
+        "description": "The same as sending no body.",
+        "value": {"model_type": "logreg", "hyperparameters": {}},
+    },
+    "logreg_balanced": {
+        "summary": "Logistic regression with balanced class weights",
+        "description": "Finds more churners at the cost of accuracy.",
+        "value": {"model_type": "logreg", "hyperparameters": {"class_weight": "balanced"}},
+    },
+    "random_forest": {
+        "summary": "Random forest of shallow trees with balanced class weights",
+        "value": {
+            "model_type": "random_forest",
+            "hyperparameters": {"n_estimators": 300, "max_depth": 5, "class_weight": "balanced"},
+        },
+    },
+}
+
 # Response examples of /predict in /docs; the 200 schema itself is generated from PredictionResponseChurn.
 PREDICT_RESPONSES: dict[int | str, dict[str, Any]] = {
     200: {
