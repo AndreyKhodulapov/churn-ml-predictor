@@ -34,6 +34,9 @@ on, `message` explains it and `details` holds structured context or `null`:
 {"code": "dataset_unavailable", "message": "Dataset is not available", "details": null}
 ```
 
+An unknown path or method gets the same body, with the status phrase as `code`, like `not_found` for `404` and
+`method_not_allowed` for `405`.
+
 ## Features
 
 | Field | Type | Values |

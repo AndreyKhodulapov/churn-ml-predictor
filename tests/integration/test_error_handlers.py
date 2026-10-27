@@ -46,6 +46,21 @@ async def test_unhandled_error_hides_exception_details(make_failing_client):
     assert "/secret/path.csv" not in response.text
 
 
+async def test_unknown_path_returns_json_404(client):
+    response = await client.get("/no/such/path")
+
+    assert response.status_code == 404
+    assert response.json() == {"code": "not_found", "message": "Not Found", "details": None}
+
+
+async def test_wrong_method_returns_json_405_with_allowed_methods(client):
+    response = await client.get("/predict")
+
+    assert response.status_code == 405
+    assert response.json() == {"code": "method_not_allowed", "message": "Method Not Allowed", "details": None}
+    assert response.headers["allow"] == "POST"
+
+
 async def test_unavailable_dataset_returns_json_503(make_failing_client, caplog):
     client = await make_failing_client(DatasetLoadError("Dataset file not found: /secret/path.csv"))
 

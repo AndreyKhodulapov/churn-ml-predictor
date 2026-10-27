@@ -1,8 +1,11 @@
 import logging
+import re
+from http import HTTPStatus
 from typing import Any
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException
 
 from src.core.exceptions import (
     DatasetLoadError,
@@ -15,10 +18,33 @@ from src.schemas.errors import ErrorResponse
 logger = logging.getLogger(__name__)
 
 
-def error_response(status_code: int, code: str, message: str, details: Any = None) -> JSONResponse:
+def error_response(
+    status_code: int, code: str, message: str, details: Any = None, headers: dict[str, str] | None = None
+) -> JSONResponse:
     """JSON answer in the format every error of the service shares: code, message and details."""
     body = ErrorResponse(code=code, message=message, details=details)
-    return JSONResponse(status_code=status_code, content=body.model_dump(mode="json"))
+    return JSONResponse(status_code=status_code, content=body.model_dump(mode="json"), headers=headers)
+
+
+def status_phrase(status_code: int) -> str:
+    """Reason phrase of the HTTP status, like Not Found for 404; a status HTTP does not name gets a generic one."""
+    try:
+        return HTTPStatus(status_code).phrase
+    except ValueError:
+        return "HTTP error"
+
+
+async def http_error_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    # Raised by routing (an unknown path, a wrong method) and by FastAPI itself, whose HTTPException is a subclass.
+    # The code is the status phrase in snake case, like not_found or method_not_allowed. The headers, like Allow
+    # of a 405, are kept.
+    phrase = status_phrase(exc.status_code)
+    code = re.sub(r"\W+", "_", phrase.lower())
+    # Starlette sets the detail to the status phrase when none is given; a detail other than a string is context
+    # for the client rather than a message, so it goes to details.
+    if isinstance(exc.detail, str):
+        return error_response(exc.status_code, code, exc.detail, headers=exc.headers)
+    return error_response(exc.status_code, code, phrase, exc.detail, exc.headers)
 
 
 async def dataset_unavailable_handler(request: Request, exc: DatasetLoadError) -> JSONResponse:

@@ -3,10 +3,12 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from starlette.exceptions import HTTPException
 
 from src.core.error_handlers import (
     dataset_not_trainable_handler,
     dataset_unavailable_handler,
+    http_error_handler,
     internal_error_handler,
     invalid_hyperparameters_handler,
     model_not_trained_handler,
@@ -51,6 +53,7 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+app.add_exception_handler(HTTPException, http_error_handler)  # type: ignore[arg-type]
 app.add_exception_handler(DatasetLoadError, dataset_unavailable_handler)  # type: ignore[arg-type]
 app.add_exception_handler(DatasetNotTrainableError, dataset_not_trainable_handler)  # type: ignore[arg-type]
 app.add_exception_handler(InvalidHyperparametersError, invalid_hyperparameters_handler)  # type: ignore[arg-type]
