@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from src.schemas.prediction import FeatureVectorChurn
@@ -55,6 +57,23 @@ async def test_predict_rejects_unknown_feature_of_a_customer_in_a_list(client, c
     assert response.status_code == 422
     assert [error["loc"] for error in response.json()["details"]] == [
         ["body", "list[FeatureVectorChurn]", 1, "contract_type"]
+    ]
+
+
+# 1e400 is valid JSON too large for a float and is read as infinity; NaN and Infinity are extensions Python accepts.
+@pytest.mark.parametrize("value", ["1e400", "-1e400", "Infinity", "NaN"])
+async def test_predict_rejects_value_that_is_not_finite(client, customer_features, value):
+    body = json.dumps({**customer_features, "monthly_fee": 0}).replace('"monthly_fee": 0', f'"monthly_fee": {value}')
+
+    response = await client.post("/predict", content=body, headers={"Content-Type": "application/json"})
+
+    assert response.status_code == 422
+    assert response.json()["details"] == [
+        {
+            "loc": ["body", "FeatureVectorChurn", "monthly_fee"],
+            "message": "Input should be a finite number",
+            "type": "finite_number",
+        }
     ]
 
 

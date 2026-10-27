@@ -139,6 +139,14 @@ def test_load_reports_line_of_invalid_row(write_csv, csv_header, csv_row):
         DatasetProcessor(path).load()
 
 
+def test_load_reports_row_with_infinity(write_csv, csv_header, csv_row):
+    # pandas reads inf as infinity, while an empty cell is a gap the pipeline fills.
+    path = write_csv(f"{csv_header}\n{csv_row}\n{csv_row.replace('29.99', 'inf')}\n")
+
+    with pytest.raises(DatasetLoadError, match="line 3"):
+        DatasetProcessor(path).load()
+
+
 def test_load_reports_missing_target_column(write_csv, csv_header, csv_row):
     path = write_csv(f"{csv_header.removesuffix(',churn')}\n{csv_row.removesuffix(',1')}\n")
 

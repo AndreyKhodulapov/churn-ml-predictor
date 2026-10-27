@@ -14,6 +14,11 @@ in `/docs`.
   Pydantic drops unknown fields by default, so a client sending, say,
   `contract_type` or the `churn` label of a dataset row would get a
   prediction and believe the model took that field into account.
+- A float feature has to be finite (`allow_inf_nan=False`). `1e400` is valid
+  JSON, but it does not fit a float and is read as infinity, and Python also
+  accepts the non-standard `Infinity` and `NaN`. Infinity passes `ge=0` and
+  makes scikit-learn fail with a `500`, while `NaN` fails `ge=0` with a
+  misleading reason. Both get `422` with `finite_number` instead.
 - The pipeline was fitted on a `pd.DataFrame`, so the input is rebuilt the
   same way: one row per customer and one column per feature.
 - The columns are taken from `pipeline.feature_names_in_`, which `fit()`

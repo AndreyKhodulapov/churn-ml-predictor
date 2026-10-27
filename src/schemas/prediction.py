@@ -11,7 +11,9 @@ class FeatureVectorChurn(BaseSchema):
 
     # A field the model does not know would otherwise be dropped silently, and the client would believe the
     # prediction takes it into account; a misspelled feature also gets named as such, not only as missing.
-    model_config = ConfigDict(extra="forbid")
+    # Infinity reaches a float field from a JSON number too large for it, like 1e400, and makes the model fail;
+    # NaN would be refused by ge=0 with a misleading reason. Both are refused as not finite instead.
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     monthly_fee: float = Field(ge=0, examples=[29.99])
     usage_hours: float = Field(ge=0, examples=[42.5])

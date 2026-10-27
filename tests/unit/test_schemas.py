@@ -43,6 +43,17 @@ def test_feature_vector_rejects_invalid_value(customer_features, field, value):
         FeatureVectorChurn(**customer_features)
 
 
+@pytest.mark.parametrize("field", ["monthly_fee", "usage_hours"])
+@pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
+def test_feature_vector_rejects_value_that_is_not_finite(customer_features, field, value):
+    customer_features[field] = value
+
+    with pytest.raises(ValidationError) as error:
+        FeatureVectorChurn(**customer_features)
+
+    assert [e["type"] for e in error.value.errors()] == ["finite_number"]
+
+
 def test_feature_vector_requires_all_fields(customer_features):
     del customer_features["usage_hours"]
 
@@ -59,6 +70,13 @@ def test_feature_vector_rejects_unknown_field(customer_features):
 
 def test_dataset_row_has_same_features_as_feature_vector():
     assert DatasetRowChurn.model_fields.keys() - {"churn"} == FeatureVectorChurn.model_fields.keys()
+
+
+def test_dataset_row_rejects_infinity(customer_features):
+    customer_features["monthly_fee"] = math.inf
+
+    with pytest.raises(ValidationError, match="finite number"):
+        DatasetRowChurn(**customer_features, churn=1)
 
 
 def test_dataset_row_accepts_features_with_label(customer_features):

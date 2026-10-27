@@ -41,8 +41,8 @@ An unknown path or method gets the same body, with the status phrase as `code`, 
 
 | Field | Type | Values |
 |-------|------|--------|
-| `monthly_fee` | float | >= 0 |
-| `usage_hours` | float | >= 0, hours used last month |
+| `monthly_fee` | float | >= 0, finite |
+| `usage_hours` | float | >= 0, finite, hours used last month |
 | `support_requests` | int | >= 0 |
 | `account_age_months` | int | >= 0 |
 | `failed_payments` | int | >= 0 |

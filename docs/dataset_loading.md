@@ -26,6 +26,12 @@ Short notes on reading, validating and serving a tabular dataset.
   `Model.model_validate(record)` turns each dict into a model.
 - Validating every row at load time catches bad data (unknown category,
   negative value, missing column) before it reaches training or a response.
+- pandas reads `inf` in a numeric column as infinity. It is not a gap, so no
+  imputer fills it, and scikit-learn refuses it in `fit()` with a `ValueError`
+  that the training would report as refused hyperparameters. The row schema
+  sets `allow_inf_nan=False`, so such a row fails validation at load time with
+  its line number. Gaps are `NaN` in the frame too, but they are turned into
+  `None` before validation.
 
 ## Class distribution
 
