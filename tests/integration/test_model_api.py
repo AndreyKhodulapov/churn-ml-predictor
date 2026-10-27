@@ -223,7 +223,7 @@ async def test_train_rejects_invalid_config(client, model_store, config, loc):
 
 
 @pytest.mark.parametrize(
-    ("config", "detail"),
+    ("config", "message"),
     [
         (
             {"hyperparameters": {"n_estimators": 10}},
@@ -243,14 +243,15 @@ async def test_train_rejects_invalid_config(client, model_store, config, loc):
         ),
     ],
 )
-async def test_train_answers_422_on_hyperparameters_the_model_refuses(client, model_store, config, detail):
+async def test_train_answers_422_on_hyperparameters_the_model_refuses(client, model_store, config, message):
     await client.post("/model/train")
     trained = model_store.model
 
     response = await client.post("/model/train", json=config)
 
     assert response.status_code == 422
-    assert response.json()["detail"].startswith(detail)
+    assert response.json()["code"] == "invalid_hyperparameters"
+    assert response.json()["message"].startswith(message)
     assert model_store.model is trained
     assert load_churn_model(model_store.path).trained_at == trained.trained_at
 
@@ -271,7 +272,7 @@ async def test_train_answers_503_without_dataset(client, model_store):
     app.dependency_overrides.clear()
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "Dataset is not available"}
+    assert response.json() == {"code": "dataset_unavailable", "message": "Dataset is not available", "details": None}
     assert model_store.model is None
     assert not model_store.path.exists()
 
@@ -282,7 +283,11 @@ async def test_train_answers_409_on_header_only_dataset(client, serve_csv, csv_h
     response = await client.post("/model/train")
 
     assert response.status_code == 409
-    assert response.json() == {"detail": "Dataset cannot be used for training: Dataset has no labeled rows"}
+    assert response.json() == {
+        "code": "dataset_not_trainable",
+        "message": "Dataset cannot be used for training: Dataset has no labeled rows",
+        "details": None,
+    }
 
 
 async def test_train_answers_409_on_single_class_dataset(client, serve_csv, csv_header, make_csv_row):
@@ -292,7 +297,9 @@ async def test_train_answers_409_on_single_class_dataset(client, serve_csv, csv_
 
     assert response.status_code == 409
     assert response.json() == {
-        "detail": "Dataset cannot be used for training: Dataset has only churn class 0, a classifier needs both"
+        "code": "dataset_not_trainable",
+        "message": "Dataset cannot be used for training: Dataset has only churn class 0, a classifier needs both",
+        "details": None,
     }
 
 
@@ -303,7 +310,7 @@ async def test_train_answers_409_on_dataset_without_labels(client, serve_csv, cs
     response = await client.post("/model/train")
 
     assert response.status_code == 409
-    assert response.json()["detail"].endswith("Dataset has no labeled rows")
+    assert response.json()["message"].endswith("Dataset has no labeled rows")
 
 
 async def test_train_fills_feature_gaps_inside_the_pipeline(client, serve_csv, csv_header, make_csv_row):
@@ -455,7 +462,7 @@ async def test_tune_rejects_invalid_config(client, config, loc):
 
 
 @pytest.mark.parametrize(
-    ("param_grid", "detail"),
+    ("param_grid", "message"),
     [
         ({"n_estimators": [10]}, "Unknown hyperparameters of logreg: n_estimators; valid ones are C,"),
         (
@@ -464,11 +471,12 @@ async def test_tune_rejects_invalid_config(client, config, loc):
         ),
     ],
 )
-async def test_tune_answers_422_on_hyperparameters_the_model_refuses(client, tuning_split, param_grid, detail):
+async def test_tune_answers_422_on_hyperparameters_the_model_refuses(client, tuning_split, param_grid, message):
     response = await client.post("/model/tune", json={"param_grid": param_grid, "cv": 3})
 
     assert response.status_code == 422
-    assert response.json()["detail"].startswith(detail)
+    assert response.json()["code"] == "invalid_hyperparameters"
+    assert response.json()["message"].startswith(message)
 
 
 async def test_tune_answers_409_when_a_class_is_smaller_than_cv(client, separable_split):
@@ -476,8 +484,10 @@ async def test_tune_answers_409_when_a_class_is_smaller_than_cv(client, separabl
 
     assert response.status_code == 409
     assert response.json() == {
-        "detail": "Dataset cannot be used for training: 5-fold cross-validation needs at least 5 customers "
-        "of each churn class in the train part, the rarest class has 4"
+        "code": "dataset_not_trainable",
+        "message": "Dataset cannot be used for training: 5-fold cross-validation needs at least 5 customers "
+        "of each churn class in the train part, the rarest class has 4",
+        "details": None,
     }
 
 
@@ -490,7 +500,7 @@ async def test_tune_answers_503_without_dataset(client):
     app.dependency_overrides.clear()
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "Dataset is not available"}
+    assert response.json() == {"code": "dataset_unavailable", "message": "Dataset is not available", "details": None}
 
 
 async def test_openapi_shows_optional_tune_config_with_examples(client):

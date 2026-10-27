@@ -1,9 +1,9 @@
 import pytest
 
-from src.core.constants import MODEL_NOT_TRAINED_DETAIL
 from src.core.openapi_examples import (
     LOYAL_CUSTOMER,
     LOYAL_CUSTOMER_PREDICTION,
+    MODEL_NOT_TRAINED_ERROR,
     RISKY_CUSTOMER,
     RISKY_CUSTOMER_PREDICTION,
 )
@@ -20,7 +20,7 @@ async def test_predict_answers_503_without_trained_model(client, customer_featur
     response = await client.post("/predict", json=customer_features)
 
     assert response.status_code == 503
-    assert response.json() == {"detail": MODEL_NOT_TRAINED_DETAIL}
+    assert response.json() == MODEL_NOT_TRAINED_ERROR
 
 
 async def test_predict_one_customer_returns_one_prediction(trained_client, customer_features):
@@ -66,8 +66,10 @@ async def test_openapi_shows_predict_examples(client):
     assert examples["several_customers"]["value"] == [LOYAL_CUSTOMER, RISKY_CUSTOMER]
     response_examples = operation["responses"]["200"]["content"]["application/json"]["examples"]
     assert response_examples["several_customers"]["value"] == [LOYAL_CUSTOMER_PREDICTION, RISKY_CUSTOMER_PREDICTION]
+    # FastAPI drops None values from the whole OpenAPI document, the null details of the example included.
     assert operation["responses"]["503"]["content"]["application/json"]["example"] == {
-        "detail": MODEL_NOT_TRAINED_DETAIL
+        "code": MODEL_NOT_TRAINED_ERROR["code"],
+        "message": MODEL_NOT_TRAINED_ERROR["message"],
     }
     assert "Answers `503` until a model is trained" in operation["description"]
 

@@ -168,4 +168,8 @@ async def test_header_only_dataset_is_described_but_not_split(client, serve_csv,
     assert info.status_code == 200
     assert info.json()["row_count"] == 0
     assert split_info.status_code == 409
-    assert split_info.json() == {"detail": "Dataset cannot be used for training: Dataset has no labeled rows"}
+    assert split_info.json() == {
+        "code": "dataset_not_trainable",
+        "message": "Dataset cannot be used for training: Dataset has no labeled rows",
+        "details": None,
+    }

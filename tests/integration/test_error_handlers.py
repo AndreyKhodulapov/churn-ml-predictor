@@ -35,7 +35,7 @@ async def test_unhandled_error_returns_json_500(make_failing_client):
     response = await client.get("/dataset/preview")
 
     assert response.status_code == 500
-    assert response.json() == {"detail": "Internal server error"}
+    assert response.json() == {"code": "internal_error", "message": "Internal server error", "details": None}
 
 
 async def test_unhandled_error_hides_exception_details(make_failing_client):
@@ -53,7 +53,7 @@ async def test_unavailable_dataset_returns_json_503(make_failing_client, caplog)
         response = await client.get("/dataset/info")
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "Dataset is not available"}
+    assert response.json() == {"code": "dataset_unavailable", "message": "Dataset is not available", "details": None}
     assert "/secret/path.csv" in caplog.text
 
 

@@ -28,4 +28,10 @@ class ModelFeaturesMismatchError(Exception):
 
 
 class ModelNotTrainedError(Exception):
-    """A prediction is requested before any churn model has been trained or loaded."""
+    """A prediction is requested before any churn model has been trained or loaded.
+
+    The message names the fix and nothing of the server, so it is safe to return to the client.
+    """
+
+    def __init__(self, message: str = "Churn model is not trained yet, call POST /model/train first") -> None:
+        super().__init__(message)

@@ -61,5 +61,3 @@ DATA_DIR = PROJECT_ROOT / "data"
 DATASET_PATH = DATA_DIR / "churn_dataset.csv"
 MODELS_DIR = PROJECT_ROOT / "models"
 MODEL_PATH = MODELS_DIR / "churn_model.joblib"
-
-MODEL_NOT_TRAINED_DETAIL = "Churn model is not trained yet, call POST /model/train first"

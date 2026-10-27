@@ -24,7 +24,7 @@ def predict_churn(
 ) -> list[PredictionResponseChurn]:
     """Churn class and class probabilities for every customer, in the order they were sent."""
     if model is None:
-        raise ModelNotTrainedError("The service has no trained churn model")
+        raise ModelNotTrainedError
     customers = features if isinstance(features, list) else [features]
     if not customers:
         # sklearn refuses an empty DataFrame; no customers simply means no predictions.

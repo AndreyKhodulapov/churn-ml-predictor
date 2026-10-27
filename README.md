@@ -27,6 +27,13 @@ customers with it.
 Endpoints that need the dataset answer `503` while it is missing or broken, and `409` with the reason while it
 cannot be split and trained on (no labeled rows, a single churn class, too few rows); the service itself keeps running.
 
+Errors raised by the service itself answer with the same JSON body: `code` names the error for a client to branch
+on, `message` explains it and `details` holds structured context or `null`:
+
+```json
+{"code": "dataset_unavailable", "message": "Dataset is not available", "details": null}
+```
+
 ## Features
 
 | Field | Type | Values |
@@ -162,7 +169,7 @@ and its shares, taken over all rows, sum to less than 1 when such rows exist.
   the model does not know, a value it refuses or a combination it forbids gets `422` with the reason:
 
 ```json
-{"detail": "Cannot train logreg with these hyperparameters: The 'C' parameter of LogisticRegression must be a float in the range (0.0, inf]. Got 0 instead."}
+{"code": "invalid_hyperparameters", "message": "Cannot train logreg with these hyperparameters: The 'C' parameter of LogisticRegression must be a float in the range (0.0, inf]. Got 0 instead.", "details": null}
 ```
 
 - `class_weight` is `"balanced"` or a dict of weights by class, like `{"0": 1, "1": 4}`: JSON object keys are
@@ -209,7 +216,7 @@ curl -X POST http://127.0.0.1:8000/model/train \
   combinations it refuses, get `422` with the reason:
 
 ```json
-{"detail": "Cannot train logreg with 1 of 2 combinations of the grid: {\"C\": 0}; the first one fails with: The 'C' parameter of LogisticRegression must be a float in the range (0.0, inf]. Got 0 instead."}
+{"code": "invalid_hyperparameters", "message": "Cannot train logreg with 1 of 2 combinations of the grid: {\"C\": 0}; the first one fails with: The 'C' parameter of LogisticRegression must be a float in the range (0.0, inf]. Got 0 instead.", "details": null}
 ```
 
 - A `cv` larger than the number of customers of a churn class in the train part gets `409`.
@@ -324,7 +331,7 @@ leaving.
 Before the first training the endpoint answers `503`:
 
 ```json
-{"detail": "Churn model is not trained yet, call POST /model/train first"}
+{"code": "model_not_trained", "message": "Churn model is not trained yet, call POST /model/train first", "details": null}
 ```
 
 Customers that fail validation get `422`. The body is one customer or a list, so the error `loc` names the type it was

@@ -1,6 +1,6 @@
 from typing import Any
 
-from src.core.constants import MODEL_NOT_TRAINED_DETAIL
+from src.core.exceptions import ModelNotTrainedError
 
 # Customers shown as /predict request examples in /docs and reused by the tests.
 LOYAL_CUSTOMER: dict[str, Any] = {
@@ -87,6 +87,13 @@ TUNE_EXAMPLES: dict[str, Any] = {
     },
 }
 
+# Answer of the service to a request that needs a model before the first /model/train.
+MODEL_NOT_TRAINED_ERROR: dict[str, Any] = {
+    "code": "model_not_trained",
+    "message": str(ModelNotTrainedError()),
+    "details": None,
+}
+
 # Response examples of /predict in /docs; the 200 schema itself is generated from PredictionResponseChurn.
 PREDICT_RESPONSES: dict[int | str, dict[str, Any]] = {
     200: {
@@ -104,6 +111,6 @@ PREDICT_RESPONSES: dict[int | str, dict[str, Any]] = {
     },
     503: {
         "description": "No churn model is trained yet",
-        "content": {"application/json": {"example": {"detail": MODEL_NOT_TRAINED_DETAIL}}},
+        "content": {"application/json": {"example": MODEL_NOT_TRAINED_ERROR}},
     },
 }
