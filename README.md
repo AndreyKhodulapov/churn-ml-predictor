@@ -144,8 +144,8 @@ and its shares, taken over all rows, sum to less than 1 when such rows exist.
 {"detail": "Cannot train logreg with these hyperparameters: The 'C' parameter of LogisticRegression must be a float in the range (0.0, inf]. Got 0 instead."}
 ```
 
-- `class_weight` can be `"balanced"` but not a dict: JSON object keys are strings, while the model expects the
-  classes `0` and `1` as keys.
+- `class_weight` is `"balanced"` or a dict of weights by class, like `{"0": 1, "1": 4}`: JSON object keys are
+  strings, so the service turns `"0"` and `"1"` back into the classes `0` and `1` the model expects.
 
 `/model/train` responses for the bundled dataset:
 

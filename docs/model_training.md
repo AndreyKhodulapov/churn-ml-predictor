@@ -124,8 +124,10 @@ is measured.
 - A random forest takes the same `class_weight`: the weights count in the
   split criterion of every tree. `"balanced_subsample"` recomputes them on
   every bootstrap sample.
-- Class weights are set as a hyperparameter, `{"class_weight": "balanced"}`.
-  A dict of weights cannot be sent: JSON object keys are strings, while the
-  model expects the classes `0` and `1`.
+- Class weights are set as a hyperparameter, `{"class_weight": "balanced"}`
+  or a dict of weights by class, `{"class_weight": {"0": 1, "1": 4}}`.
+  JSON object keys are always strings, while the model looks the classes `0`
+  and `1` up as ints, so `TrainingConfigChurn` turns digit keys back into ints;
+  without that sklearn answers "The classes, [0, 1], are not in class_weight".
 - Other ways to handle imbalance: moving the decision threshold below 0.5 or
   resampling the train part.

@@ -78,6 +78,16 @@ async def test_train_with_balanced_class_weight_finds_more_churners(client):
     assert balanced["accuracy"] < default["accuracy"]
 
 
+async def test_train_accepts_class_weight_dict_from_json(client, model_store):
+    # JSON object keys are strings: the classes 0 and 1 arrive as "0" and "1".
+    response = await client.post("/model/train", json={"hyperparameters": {"class_weight": {"0": 1, "1": 4}}})
+
+    assert response.status_code == 200
+    assert model_store.model.pipeline.named_steps["model"].class_weight == {0: 1, 1: 4}
+    status = (await client.get("/model/status")).json()
+    assert status["hyperparameters"]["class_weight"] == {"0": 1, "1": 4}
+
+
 async def test_train_serves_and_saves_the_trained_model(client, model_store):
     before = datetime.now(UTC)
     response = await client.post("/model/train", json={"hyperparameters": {"class_weight": "balanced"}})

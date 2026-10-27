@@ -109,3 +109,16 @@ def test_training_configs_do_not_share_hyperparameters():
 def test_training_config_rejects_invalid_fields(fields):
     with pytest.raises(ValidationError):
         TrainingConfigChurn(**fields)
+
+
+def test_training_config_restores_int_class_labels_of_class_weight():
+    config = TrainingConfigChurn(hyperparameters={"C": 0.5, "class_weight": {"0": 1, "1": 5}})
+
+    assert config.hyperparameters == {"C": 0.5, "class_weight": {0: 1, 1: 5}}
+
+
+@pytest.mark.parametrize("class_weight", ["balanced", None, {0: 1, 1: 5}, {"stays": 1}])
+def test_training_config_keeps_other_class_weights(class_weight):
+    config = TrainingConfigChurn(hyperparameters={"class_weight": class_weight})
+
+    assert config.hyperparameters == {"class_weight": class_weight}
