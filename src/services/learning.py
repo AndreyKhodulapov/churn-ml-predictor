@@ -8,7 +8,7 @@ from sklearn.metrics import accuracy_score, f1_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-from src.core.constants import CATEGORICAL_FEATURES, CLASSIFIERS, NUMERIC_FEATURES, RANDOM_STATE, ClassWeight, ModelType
+from src.core.constants import CATEGORICAL_FEATURES, CLASSIFIERS, NUMERIC_FEATURES, RANDOM_STATE, ModelType
 from src.core.exceptions import InvalidHyperparametersError
 from src.schemas.learning import TrainMetrics
 from src.services.preprocessing import build_imputer, split_numeric_features
@@ -69,9 +69,14 @@ def build_churn_pipeline(
     )
 
 
-def train_churn_model(X_train: pd.DataFrame, y_train: pd.Series, class_weight: ClassWeight | None = None) -> Pipeline:
-    """Fit a new churn pipeline on the train part; every call returns a separate model."""
-    classifier = build_classifier("logreg", {"class_weight": class_weight})
+def train_churn_model(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    model_type: ModelType = "logreg",
+    hyperparameters: Mapping[str, Any] | None = None,
+) -> Pipeline:
+    """Fit a new churn pipeline with a model_type classifier on the train part; every call returns a separate model."""
+    classifier = build_classifier(model_type, hyperparameters or {})
     pipeline = build_churn_pipeline(NUMERIC_FEATURES, CATEGORICAL_FEATURES, classifier)
     return pipeline.fit(X_train, y_train)
 

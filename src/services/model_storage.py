@@ -1,15 +1,16 @@
 import logging
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 import joblib
 import sklearn
 from sklearn.pipeline import Pipeline
 
-from src.core.constants import MODEL_PATH, ClassWeight
+from src.core.constants import MODEL_PATH, ModelType
 from src.core.exceptions import ModelLoadError
 from src.schemas.learning import ModelStatus, TrainMetrics
 
@@ -22,7 +23,9 @@ class TrainedChurnModel:
 
     pipeline: Pipeline
     metrics: TrainMetrics
-    class_weight: ClassWeight | None = None
+    model_type: ModelType
+    # As requested for training; the rest are the scikit-learn defaults.
+    hyperparameters: dict[str, Any]
     trained_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     # A pickled estimator is only guaranteed to behave the same under the scikit-learn version that saved it.
     sklearn_version: str = sklearn.__version__
@@ -53,6 +56,10 @@ def load_churn_model(path: Path) -> TrainedChurnModel:
         raise ModelLoadError(f"Cannot read churn model {path}: {e}") from e
     if not isinstance(model, TrainedChurnModel):
         raise ModelLoadError(f"{path} holds {type(model).__name__}, not a churn model")
+    # A file saved before a field was added unpickles without it and would fail only once the field is read.
+    missing = [f.name for f in fields(TrainedChurnModel) if f.name not in vars(model)]
+    if missing:
+        raise ModelLoadError(f"{path} holds a churn model of an older format without {', '.join(missing)}, retrain it")
     if model.sklearn_version != sklearn.__version__:
         logger.warning(
             "Churn model %s was saved with scikit-learn %s and runs on %s, its predictions may differ",
@@ -97,7 +104,11 @@ class ChurnModelStore:
         if model is None:
             return ModelStatus(trained=False)
         return ModelStatus(
-            trained=True, trained_at=model.trained_at, metrics=model.metrics, class_weight=model.class_weight
+            trained=True,
+            trained_at=model.trained_at,
+            metrics=model.metrics,
+            model_type=model.model_type,
+            hyperparameters=model.hyperparameters,
         )
 
 

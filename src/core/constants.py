@@ -8,8 +8,6 @@ from sklearn.linear_model import LogisticRegression
 Region = Literal["europe", "asia", "america", "africa"]
 DeviceType = Literal["mobile", "desktop", "tablet"]
 PaymentMethod = Literal["card", "paypal", "crypto"]
-# "balanced" weights each class inversely to its share, so the rare churners count as much as those who stay.
-ClassWeight = Literal["balanced"]
 ModelType = Literal["logreg", "random_forest"]
 CLASSIFIERS: dict[ModelType, type[ClassifierMixin]] = {
     "logreg": LogisticRegression,

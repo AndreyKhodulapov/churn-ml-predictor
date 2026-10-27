@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import ConfigDict, Field
 
-from src.core.constants import ClassWeight, ModelType
+from src.core.constants import ModelType
 from src.schemas.base import BaseSchema
 
 
@@ -32,5 +32,6 @@ class ModelStatus(BaseSchema):
     trained: bool
     trained_at: datetime | None = None
     metrics: TrainMetrics | None = None
-    # Without it the metrics are hard to compare: balanced weights trade accuracy for churn F1.
-    class_weight: ClassWeight | None = None
+    # Without them the metrics are hard to compare: e.g. balanced class weights trade accuracy for churn F1.
+    model_type: ModelType | None = None
+    hyperparameters: dict[str, Any] | None = None

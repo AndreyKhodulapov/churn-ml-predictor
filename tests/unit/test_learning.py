@@ -144,17 +144,22 @@ def test_feature_transformer_ignores_category_unseen_in_train_part(make_X):
     assert np.all(transformed[["region_asia", "region_europe"]] == 0)
 
 
-def test_train_churn_model_returns_fitted_pipeline_without_class_weights(X_train):
+def test_train_churn_model_fits_logreg_with_sklearn_defaults_by_default(X_train):
     pipeline = train_churn_model(X_train, y_train)
 
     check_is_fitted(pipeline)
-    assert pipeline.named_steps["model"].class_weight is None
+    model = pipeline.named_steps["model"]
+    assert type(model) is LogisticRegression
+    assert model.class_weight is None
 
 
-def test_train_churn_model_passes_class_weight_to_model(X_train):
-    pipeline = train_churn_model(X_train, y_train, class_weight="balanced")
+def test_train_churn_model_fits_classifier_of_model_type_with_hyperparameters(X_train):
+    pipeline = train_churn_model(X_train, y_train, "random_forest", {"n_estimators": 5, "class_weight": "balanced"})
 
-    assert pipeline.named_steps["model"].class_weight == "balanced"
+    check_is_fitted(pipeline)
+    model = pipeline.named_steps["model"]
+    assert type(model) is RandomForestClassifier
+    assert (model.n_estimators, model.class_weight) == (5, "balanced")
 
 
 def test_train_churn_model_returns_separate_model_on_every_call(X_train):

@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 
 from src.core.exceptions import DatasetLoadError
 from src.main import app, lifespan
@@ -37,16 +39,38 @@ async def test_train_returns_test_metrics_of_default_dataset(client):
     assert all(0 <= value <= 1 for value in body.values())
 
 
-async def test_train_is_reproducible(client):
-    first = await client.post("/model/train")
-    second = await client.post("/model/train")
+@pytest.mark.parametrize("config", [{}, {"model_type": "random_forest", "hyperparameters": {"n_estimators": 20}}])
+async def test_train_is_reproducible(client, config):
+    first = await client.post("/model/train", json=config)
+    second = await client.post("/model/train", json=config)
 
     assert first.json() == second.json()
 
 
+async def test_train_without_config_trains_logreg_with_sklearn_defaults(client, model_store):
+    without_body = (await client.post("/model/train")).json()
+    model = model_store.model
+
+    assert (model.model_type, model.hyperparameters) == ("logreg", {})
+    assert type(model.pipeline.named_steps["model"]) is LogisticRegression
+    assert (await client.post("/model/train", json={})).json() == without_body
+
+
+async def test_train_random_forest_with_hyperparameters(client, model_store):
+    config = {"model_type": "random_forest", "hyperparameters": {"n_estimators": 20, "max_depth": 5}}
+
+    response = await client.post("/model/train", json=config)
+
+    assert response.status_code == 200
+    assert all(0 <= value <= 1 for value in response.json().values())
+    forest = model_store.model.pipeline.named_steps["model"]
+    assert type(forest) is RandomForestClassifier
+    assert (forest.n_estimators, forest.max_depth) == (20, 5)
+
+
 async def test_train_with_balanced_class_weight_finds_more_churners(client):
     default = (await client.post("/model/train")).json()
-    balanced = (await client.post("/model/train", params={"class_weight": "balanced"})).json()
+    balanced = (await client.post("/model/train", json={"hyperparameters": {"class_weight": "balanced"}})).json()
 
     # Only 20% of customers churn: weighting them up trades accuracy for catching more of them.
     assert balanced["f1"] > default["f1"]
@@ -55,21 +79,22 @@ async def test_train_with_balanced_class_weight_finds_more_churners(client):
 
 async def test_train_serves_and_saves_the_trained_model(client, model_store):
     before = datetime.now(UTC)
-    response = await client.post("/model/train", params={"class_weight": "balanced"})
+    response = await client.post("/model/train", json={"hyperparameters": {"class_weight": "balanced"}})
 
     model = model_store.model
     assert model.metrics.model_dump() == response.json()
-    assert model.class_weight == "balanced"
+    assert (model.model_type, model.hyperparameters) == ("logreg", {"class_weight": "balanced"})
     assert before <= model.trained_at <= datetime.now(UTC)
     saved = load_churn_model(model_store.path)
-    assert (saved.metrics, saved.class_weight, saved.trained_at) == (model.metrics, "balanced", model.trained_at)
+    assert (saved.metrics, saved.trained_at) == (model.metrics, model.trained_at)
+    assert (saved.model_type, saved.hyperparameters) == ("logreg", {"class_weight": "balanced"})
 
 
 async def test_train_replaces_the_previous_model(client, model_store):
-    await client.post("/model/train", params={"class_weight": "balanced"})
+    await client.post("/model/train", json={"hyperparameters": {"class_weight": "balanced"}})
     response = await client.post("/model/train")
 
-    assert model_store.model.class_weight is None
+    assert model_store.model.hyperparameters == {}
     assert load_churn_model(model_store.path).metrics.model_dump() == response.json()
 
 
@@ -89,12 +114,19 @@ async def test_status_reports_untrained_model(client):
     response = await client.get("/model/status")
 
     assert response.status_code == 200
-    assert response.json() == {"trained": False, "trained_at": None, "metrics": None, "class_weight": None}
+    assert response.json() == {
+        "trained": False,
+        "trained_at": None,
+        "metrics": None,
+        "model_type": None,
+        "hyperparameters": None,
+    }
 
 
 async def test_status_reports_the_last_training(client, model_store):
     await client.post("/model/train")
-    metrics = (await client.post("/model/train", params={"class_weight": "balanced"})).json()
+    config = {"model_type": "random_forest", "hyperparameters": {"n_estimators": 20, "class_weight": "balanced"}}
+    metrics = (await client.post("/model/train", json=config)).json()
 
     response = await client.get("/model/status")
 
@@ -102,7 +134,8 @@ async def test_status_reports_the_last_training(client, model_store):
     body = response.json()
     assert body["trained"] is True
     assert body["metrics"] == metrics
-    assert body["class_weight"] == "balanced"
+    assert body["model_type"] == "random_forest"
+    assert body["hyperparameters"] == {"n_estimators": 20, "class_weight": "balanced"}
     assert datetime.fromisoformat(body["trained_at"]) == model_store.model.trained_at
 
 
@@ -120,11 +153,19 @@ async def test_status_does_not_need_the_dataset(client, model_store):
     assert response.json()["trained"] is True
 
 
-async def test_train_rejects_unknown_class_weight(client):
-    response = await client.post("/model/train", params={"class_weight": "heavy"})
+@pytest.mark.parametrize(
+    ("config", "loc"),
+    [
+        ({"model_type": "xgboost"}, ["body", "model_type"]),
+        ({"hyperparams": {"C": 0.5}}, ["body", "hyperparams"]),
+    ],
+)
+async def test_train_rejects_invalid_config(client, model_store, config, loc):
+    response = await client.post("/model/train", json=config)
 
     assert response.status_code == 422
-    assert response.json()["detail"][0]["loc"] == ["query", "class_weight"]
+    assert response.json()["detail"][0]["loc"] == loc
+    assert model_store.model is None
 
 
 async def test_train_fits_and_scores_served_split(client, separable_split):
@@ -196,7 +237,8 @@ async def test_train_fills_feature_gaps_inside_the_pipeline(client, serve_csv, c
 
 
 async def test_trained_model_survives_restart(client, model_store):
-    await client.post("/model/train", params={"class_weight": "balanced"})
+    config = {"model_type": "random_forest", "hyperparameters": {"n_estimators": 20, "class_weight": "balanced"}}
+    await client.post("/model/train", json=config)
     status_before = (await client.get("/model/status")).json()
 
     # A restarted process begins with an empty store; the lifespan fills it from the saved file.

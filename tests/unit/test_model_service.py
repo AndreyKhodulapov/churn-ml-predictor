@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from src.schemas.learning import TrainMetrics
+from src.schemas.learning import TrainingConfigChurn, TrainMetrics
 from src.services.model import train_and_save_churn_model
 from src.services.model_storage import ChurnModelStore, load_churn_model
 from src.services.preprocessing import SplitData
@@ -32,29 +32,32 @@ def store(tmp_path) -> ChurnModelStore:
 
 
 def test_returns_test_metrics(separable_split, store):
-    metrics = train_and_save_churn_model(separable_split, None, store)
+    metrics = train_and_save_churn_model(separable_split, TrainingConfigChurn(), store)
 
     assert metrics == TrainMetrics(accuracy=1.0, f1=1.0)
 
 
-def test_serves_and_saves_the_trained_model(separable_split, store):
-    metrics = train_and_save_churn_model(separable_split, "balanced", store)
+def test_serves_and_saves_the_trained_model_with_its_type_and_hyperparameters(separable_split, store):
+    config = TrainingConfigChurn(model_type="random_forest", hyperparameters={"n_estimators": 10})
+
+    metrics = train_and_save_churn_model(separable_split, config, store)
 
     assert store.model.metrics == metrics
-    assert store.model.class_weight == "balanced"
+    assert (store.model.model_type, store.model.hyperparameters) == ("random_forest", {"n_estimators": 10})
     saved = load_churn_model(store.path)
-    assert (saved.metrics, saved.class_weight, saved.trained_at) == (metrics, "balanced", store.model.trained_at)
+    assert (saved.metrics, saved.trained_at) == (metrics, store.model.trained_at)
+    assert (saved.model_type, saved.hyperparameters) == ("random_forest", {"n_estimators": 10})
     assert list(saved.pipeline.predict(separable_split.X_test)) == [0, 1]
 
 
 def test_failed_training_keeps_the_previous_model(separable_split, store):
-    train_and_save_churn_model(separable_split, None, store)
+    train_and_save_churn_model(separable_split, TrainingConfigChurn(), store)
     trained = store.model
     single_class_split = separable_split._replace(y_train=pd.Series([0] * 6))
 
     # LogisticRegression refuses to fit on a single class.
     with pytest.raises(ValueError):
-        train_and_save_churn_model(single_class_split, None, store)
+        train_and_save_churn_model(single_class_split, TrainingConfigChurn(), store)
 
     assert store.model is trained
     assert load_churn_model(store.path).trained_at == trained.trained_at

@@ -1,4 +1,5 @@
 import logging
+from copy import copy
 from dataclasses import replace
 from datetime import UTC, datetime
 
@@ -29,9 +30,10 @@ def X(customer_features) -> pd.DataFrame:
 @pytest.fixture
 def trained_model(X) -> TrainedChurnModel:
     return TrainedChurnModel(
-        pipeline=train_churn_model(X, pd.Series([0, 0, 1, 1]), class_weight="balanced"),
+        pipeline=train_churn_model(X, pd.Series([0, 0, 1, 1]), "logreg", {"C": 0.5, "class_weight": "balanced"}),
         metrics=TrainMetrics(accuracy=0.75, f1=0.5),
-        class_weight="balanced",
+        model_type="logreg",
+        hyperparameters={"C": 0.5, "class_weight": "balanced"},
         trained_at=datetime(2026, 10, 25, 12, 30, tzinfo=UTC),
     )
 
@@ -42,7 +44,9 @@ def model_path(tmp_path):
 
 
 def test_trained_model_records_training_time_in_utc_and_running_sklearn_version(trained_model):
-    model = TrainedChurnModel(pipeline=trained_model.pipeline, metrics=trained_model.metrics)
+    model = TrainedChurnModel(
+        pipeline=trained_model.pipeline, metrics=trained_model.metrics, model_type="logreg", hyperparameters={}
+    )
 
     assert model.trained_at.tzinfo is UTC
     assert model.sklearn_version == sklearn.__version__
@@ -57,14 +61,15 @@ def test_loaded_model_predicts_like_the_saved_one(trained_model, model_path, X):
     np.testing.assert_array_equal(loaded.pipeline.predict_proba(X), trained_model.pipeline.predict_proba(X))
 
 
-def test_loaded_model_keeps_metrics_training_time_and_class_weight(trained_model, model_path):
+def test_loaded_model_keeps_metrics_training_time_model_type_and_hyperparameters(trained_model, model_path):
     save_churn_model(trained_model, model_path)
 
     loaded = load_churn_model(model_path)
 
     assert loaded.metrics == TrainMetrics(accuracy=0.75, f1=0.5)
     assert loaded.trained_at == datetime(2026, 10, 25, 12, 30, tzinfo=UTC)
-    assert loaded.class_weight == "balanced"
+    assert loaded.model_type == "logreg"
+    assert loaded.hyperparameters == {"C": 0.5, "class_weight": "balanced"}
     assert loaded.sklearn_version == sklearn.__version__
 
 
@@ -100,6 +105,17 @@ def test_load_rejects_file_with_bare_pipeline(trained_model, model_path):
     joblib.dump(trained_model.pipeline, model_path)
 
     with pytest.raises(ModelLoadError, match="holds Pipeline, not a churn model"):
+        load_churn_model(model_path)
+
+
+def test_load_rejects_model_saved_before_model_type_and_hyperparameters(trained_model, model_path):
+    # Unpickling restores the saved fields only, so an old file has class_weight and none of the new fields.
+    old_model = copy(trained_model)
+    del old_model.__dict__["model_type"], old_model.__dict__["hyperparameters"]
+    old_model.__dict__["class_weight"] = "balanced"
+    joblib.dump(old_model, model_path)
+
+    with pytest.raises(ModelLoadError, match="older format without model_type, hyperparameters, retrain it"):
         load_churn_model(model_path)
 
 
@@ -182,7 +198,8 @@ def test_store_status_reports_served_model(trained_model, model_path):
         trained=True,
         trained_at=datetime(2026, 10, 25, 12, 30, tzinfo=UTC),
         metrics=TrainMetrics(accuracy=0.75, f1=0.5),
-        class_weight="balanced",
+        model_type="logreg",
+        hyperparameters={"C": 0.5, "class_weight": "balanced"},
     )
 
 

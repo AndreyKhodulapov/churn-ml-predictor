@@ -1,9 +1,8 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Body, Depends
 
-from src.core.constants import ClassWeight
-from src.schemas.learning import ModelStatus, TrainMetrics
+from src.schemas.learning import ModelStatus, TrainingConfigChurn, TrainMetrics
 from src.services.model import train_and_save_churn_model
 from src.services.model_storage import ChurnModelStore, get_model_store
 from src.services.preprocessing import SplitData, get_split
@@ -16,11 +15,10 @@ router = APIRouter(tags=["Model"], prefix="/model")
 def train_model(
     split: Annotated[SplitData, Depends(get_split)],
     store: Annotated[ChurnModelStore, Depends(get_model_store)],
-    class_weight: Annotated[
-        ClassWeight | None, Query(description="Class weights; omit to weight every row equally")
-    ] = None,
+    # Without a body the service trains logreg with the scikit-learn defaults.
+    config: Annotated[TrainingConfigChurn, Body(default_factory=TrainingConfigChurn)],
 ) -> TrainMetrics:
-    return train_and_save_churn_model(split, class_weight, store)
+    return train_and_save_churn_model(split, config, store)
 
 
 @router.get("/status")
