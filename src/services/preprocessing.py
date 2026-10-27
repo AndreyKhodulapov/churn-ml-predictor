@@ -11,6 +11,7 @@ from src.core.constants import (
     BINARY_FEATURES,
     CATEGORICAL_FEATURES,
     CLASS_SHARE_TOLERANCE,
+    FEATURES,
     NUMERIC_FEATURES,
     RANDOM_STATE,
     TARGET_COLUMN,
@@ -48,7 +49,7 @@ def prepare_data(df: pd.DataFrame) -> PreparedData:
     if dropped := len(df) - len(labeled):
         logger.warning("Dropped %d rows without a %r label", dropped, TARGET_COLUMN)
 
-    X = labeled[[*NUMERIC_FEATURES, *CATEGORICAL_FEATURES]]
+    X = labeled[list(FEATURES)]
     missing = X.isna().sum()
     if missing.any():
         logger.warning("Missing feature values: %s", missing[missing > 0].to_dict())
