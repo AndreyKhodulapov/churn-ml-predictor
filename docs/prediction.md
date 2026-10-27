@@ -10,11 +10,18 @@ in `/docs`.
   scikit-learn knows nothing about Pydantic: it calls `np.asarray()` on its
   input. A single object becomes a 0-d array ("Expected 2D array, got scalar
   array"), a list of them a 1-d array of objects.
-- The pipeline was fitted on a `pd.DataFrame`, and its `ColumnTransformer`
-  steps pick columns by name. So the input is rebuilt the same way:
-  `pd.DataFrame([customer.model_dump() for customer in customers])`, one row
-  per customer and one column per feature. Column order does not matter, the
-  names do.
+- The pipeline was fitted on a `pd.DataFrame`, so the input is rebuilt the
+  same way: one row per customer and one column per feature.
+- The columns are taken from `pipeline.feature_names_in_`, which `fit()`
+  remembers from the train part: the input has exactly the features of the
+  served model, in the same order. The order of the `FeatureVectorChurn`
+  fields differs (`autopay_enabled` is last there), and it does not leak in.
+- The `ColumnTransformer` steps pick columns by name and are lenient: they
+  accept another order, ignore an extra column, and a column missing from
+  `pd.DataFrame(rows, columns=...)` would arrive as `NaN` and be filled like a
+  gap. So the service compares the features of the model with the fields of
+  `FeatureVectorChurn` itself and refuses to predict with a model trained on
+  other features (`ModelFeaturesMismatchError`, a bare `500`).
 - The fitted pipeline fills gaps, scales and encodes the row itself, so the
   endpoint passes raw features and cannot drift from what training did.
 - An empty list is answered with an empty list before reaching the model:

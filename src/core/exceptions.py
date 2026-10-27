@@ -20,5 +20,12 @@ class ModelLoadError(Exception):
     """The saved churn model file cannot be read or does not hold a churn model."""
 
 
+class ModelFeaturesMismatchError(Exception):
+    """The served churn model was trained on other features than a prediction request carries.
+
+    It is a fault of the service, not of the request, so the client gets a bare 500 and the message goes to the log.
+    """
+
+
 class ModelNotTrainedError(Exception):
     """A prediction is requested before any churn model has been trained or loaded."""
