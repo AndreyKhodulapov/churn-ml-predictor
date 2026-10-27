@@ -13,6 +13,7 @@ from src.core.exceptions import (
     DatasetNotTrainableError,
     InvalidHyperparametersError,
     ModelNotTrainedError,
+    PredictionError,
 )
 from src.schemas.errors import ErrorResponse, ValidationErrorDetail
 
@@ -81,6 +82,13 @@ async def model_not_trained_handler(request: Request, exc: ModelNotTrainedError)
     # The service is up but cannot predict yet: 503, like the missing dataset; it is fixed by /model/train.
     # The message names that fix only, so it is returned as is.
     return error_response(503, "model_not_trained", str(exc))
+
+
+async def prediction_failed_handler(request: Request, exc: PredictionError) -> JSONResponse:
+    # The request is valid, the model fails on it. The cause names model internals, so it goes to the log only, with
+    # the traceback: unlike an unhandled exception, a handled one is not re-raised to the server log.
+    logger.error("%s", exc, exc_info=exc)
+    return error_response(500, "prediction_failed", "Churn model failed to make a prediction")
 
 
 async def internal_error_handler(request: Request, exc: Exception) -> JSONResponse:

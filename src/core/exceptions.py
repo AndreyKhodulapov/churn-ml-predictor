@@ -23,7 +23,15 @@ class ModelLoadError(Exception):
 class ModelFeaturesMismatchError(Exception):
     """The served churn model was trained on other features than a prediction request carries.
 
-    It is a fault of the service, not of the request, so the client gets a bare 500 and the message goes to the log.
+    It is a fault of the service, not of the request: predict_churn() reports it as PredictionError.
+    """
+
+
+class PredictionError(Exception):
+    """The served churn model fails to predict for a request that has passed validation.
+
+    It is a fault of the service, not of the request. The message and its cause name model internals, so they go to
+    the log and the client gets a generic message.
     """
 
 

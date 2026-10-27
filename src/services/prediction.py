@@ -4,7 +4,7 @@ import pandas as pd
 from sklearn.pipeline import Pipeline
 
 from src.core.constants import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURES
-from src.core.exceptions import ModelNotTrainedError
+from src.core.exceptions import ModelNotTrainedError, PredictionError
 from src.schemas.prediction import FeatureDescription, FeatureSchemaChurn, FeatureVectorChurn, PredictionResponseChurn
 from src.services.model_storage import TrainedChurnModel, check_model_features
 
@@ -29,11 +29,15 @@ def predict_churn(
     if not customers:
         # sklearn refuses an empty DataFrame; no customers simply means no predictions.
         return []
-    # The pipeline picks columns by name, so it needs a DataFrame like the one it was fitted on, not schema objects.
-    X = build_model_input(model.pipeline, customers)
-    predicted_classes = model.pipeline.predict(X)
-    # Columns follow pipeline.classes_, which is [0, 1]: training is refused unless both classes are present.
-    probabilities = model.pipeline.predict_proba(X)
+    try:
+        # The pipeline picks columns by name, so it needs a DataFrame like the one it was fitted on, not schema objects.
+        X = build_model_input(model.pipeline, customers)
+        predicted_classes = model.pipeline.predict(X)
+        # Columns follow pipeline.classes_, which is [0, 1]: training is refused unless both classes are present.
+        probabilities = model.pipeline.predict_proba(X)
+    # The customers have passed validation, so whatever fails here is a fault of the model, not of the request.
+    except Exception as e:
+        raise PredictionError(f"Churn model failed to predict, batch size {len(customers)}: {e}") from e
     return [
         PredictionResponseChurn(churn=churn, probability_no_churn=proba[0], probability_churn=proba[1])
         for churn, proba in zip(predicted_classes, probabilities, strict=True)

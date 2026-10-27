@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 
 from src.core.openapi_examples import (
@@ -21,6 +23,37 @@ async def test_predict_answers_503_without_trained_model(client, customer_featur
 
     assert response.status_code == 503
     assert response.json() == MODEL_NOT_TRAINED_ERROR
+
+
+@pytest.fixture
+def broken_model(trained_client, model_store, monkeypatch):
+    def broken_predict_proba(X):
+        raise ValueError("Model internals in /secret/model.joblib")
+
+    monkeypatch.setattr(model_store.model.pipeline, "predict_proba", broken_predict_proba)
+    return trained_client
+
+
+async def test_predict_answers_500_when_model_fails(broken_model, customer_features):
+    response = await broken_model.post("/predict", json=customer_features)
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "code": "prediction_failed",
+        "message": "Churn model failed to make a prediction",
+        "details": None,
+    }
+
+
+async def test_predict_logs_the_cause_of_a_model_failure_and_hides_it(broken_model, customer_features, caplog):
+    with caplog.at_level(logging.ERROR):
+        response = await broken_model.post("/predict", json=customer_features)
+
+    assert "/secret/model.joblib" not in response.text
+    assert "Traceback" not in response.text
+    assert "Churn model failed to predict, batch size 1: Model internals in /secret/model.joblib" in caplog.text
+    # The traceback reaches the log, down to the exception the pipeline raised.
+    assert "ValueError" in caplog.text
 
 
 async def test_predict_one_customer_returns_one_prediction(trained_client, customer_features):

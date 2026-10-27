@@ -30,7 +30,10 @@ in `/docs`.
   `pd.DataFrame(rows, columns=...)` would arrive as `NaN` and be filled like a
   gap. So the service compares the features of the model with the fields of
   `FeatureVectorChurn` itself and refuses to predict with a model trained on
-  other features (`ModelFeaturesMismatchError`, a bare `500`).
+  other features (`ModelFeaturesMismatchError`, answered as a failed
+  prediction, see below). Such a model is already refused when it is loaded
+  from disk, so here the check guards against training features that have
+  drifted from `FeatureVectorChurn`.
 - The fitted pipeline fills gaps, scales and encodes the row itself, so the
   endpoint passes raw features and cannot drift from what training did.
 - An empty list is answered with an empty list before reaching the model:
@@ -74,6 +77,19 @@ in `/docs`.
   `["body", "list[FeatureVectorChurn]", 1, "region"]`. The tags repeat the
   names pydantic gives the types of a plain union, so the locations stay the
   same.
+
+## The model fails to predict
+
+- A request that reaches the model has passed validation, so whatever the
+  pipeline raises (`build_model_input`, `predict`, `predict_proba`) is a fault
+  of the service. `predict_churn()` wraps it in `PredictionError`, and its
+  handler answers `500` with `code: prediction_failed`.
+- The answer carries a generic message only. The cause names model internals,
+  like the features it was trained on, so it goes to the log with the
+  traceback. A handled exception is not re-raised to the server log the way
+  an unhandled one is, so the handler logs it itself.
+- `prediction_failed` rather than the generic `internal_error`: the client
+  learns that the request was fine and the model is at fault.
 
 ## No trained model
 

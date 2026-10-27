@@ -13,6 +13,7 @@ from src.core.error_handlers import (
     internal_error_handler,
     invalid_hyperparameters_handler,
     model_not_trained_handler,
+    prediction_failed_handler,
     request_validation_handler,
 )
 from src.core.exceptions import (
@@ -21,6 +22,7 @@ from src.core.exceptions import (
     InvalidHyperparametersError,
     ModelLoadError,
     ModelNotTrainedError,
+    PredictionError,
 )
 from src.routers import dataset, health, model, prediction
 from src.services.dataset import get_dataset
@@ -61,6 +63,7 @@ app.add_exception_handler(DatasetLoadError, dataset_unavailable_handler)  # type
 app.add_exception_handler(DatasetNotTrainableError, dataset_not_trainable_handler)  # type: ignore[arg-type]
 app.add_exception_handler(InvalidHyperparametersError, invalid_hyperparameters_handler)  # type: ignore[arg-type]
 app.add_exception_handler(ModelNotTrainedError, model_not_trained_handler)  # type: ignore[arg-type]
+app.add_exception_handler(PredictionError, prediction_failed_handler)  # type: ignore[arg-type]
 app.add_exception_handler(Exception, internal_error_handler)
 app.include_router(health.router)
 app.include_router(prediction.router)

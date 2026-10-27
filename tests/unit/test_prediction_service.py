@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from src.core.constants import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURES, DeviceType, PaymentMethod, Region
-from src.core.exceptions import ModelFeaturesMismatchError, ModelNotTrainedError
+from src.core.exceptions import ModelFeaturesMismatchError, ModelNotTrainedError, PredictionError
 from src.schemas.learning import TrainMetrics
 from src.schemas.prediction import FeatureDescription, FeatureVectorChurn
 from src.services.learning import train_churn_model
@@ -84,8 +84,23 @@ def test_refuses_model_trained_on_other_features(make_model, make_customer):
     # Without the check discount would arrive as NaN, be filled like a gap and the model would predict anyway.
     model = make_model([*FEATURES, "discount"])
 
-    with pytest.raises(ModelFeaturesMismatchError, match="discount"):
+    with pytest.raises(PredictionError, match="discount") as error:
         predict_churn(model, make_customer(0))
+
+    assert isinstance(error.value.__cause__, ModelFeaturesMismatchError)
+
+
+def test_reports_failure_of_the_pipeline_as_prediction_error(model, make_customer, monkeypatch):
+    def broken_predict(X):
+        raise ValueError("Input contains NaN")
+
+    monkeypatch.setattr(model.pipeline, "predict", broken_predict)
+
+    with pytest.raises(PredictionError, match="Input contains NaN") as error:
+        predict_churn(model, [make_customer(0), make_customer(5)])
+
+    assert "batch size 2" in str(error.value)
+    assert isinstance(error.value.__cause__, ValueError)
 
 
 def test_returns_no_predictions_for_no_customers(model):
