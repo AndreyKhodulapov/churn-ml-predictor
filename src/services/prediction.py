@@ -1,8 +1,11 @@
+from typing import Literal
+
 import pandas as pd
 from sklearn.pipeline import Pipeline
 
+from src.core.constants import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURES
 from src.core.exceptions import ModelNotTrainedError
-from src.schemas.prediction import FeatureVectorChurn, PredictionResponseChurn
+from src.schemas.prediction import FeatureDescription, FeatureSchemaChurn, FeatureVectorChurn, PredictionResponseChurn
 from src.services.model_storage import TrainedChurnModel, check_model_features
 
 
@@ -35,3 +38,33 @@ def predict_churn(
         PredictionResponseChurn(churn=churn, probability_no_churn=proba[0], probability_churn=proba[1])
         for churn, proba in zip(predicted_classes, probabilities, strict=True)
     ]
+
+
+def describe_features() -> FeatureSchemaChurn:
+    """Features of FeatureVectorChurn in the training order, with the types and values /predict accepts.
+
+    Types, values and minimums are read from the JSON Schema of FeatureVectorChurn, so the answer cannot drift from
+    the validation of /predict; the order and the kind of every feature come from the training feature lists.
+    """
+    properties = FeatureVectorChurn.model_json_schema()["properties"]
+    return FeatureSchemaChurn(
+        features=[
+            FeatureDescription(
+                name=name,
+                kind=feature_kind(name),
+                type=properties[name]["type"],
+                allowed_values=properties[name].get("enum"),
+                minimum=properties[name].get("minimum"),
+            )
+            for name in FEATURES
+        ]
+    )
+
+
+def feature_kind(name: str) -> Literal["numeric", "binary", "categorical"]:
+    """How the churn pipeline treats the feature: see build_feature_transformer()."""
+    if name in CATEGORICAL_FEATURES:
+        return "categorical"
+    if name in BINARY_FEATURES:
+        return "binary"
+    return "numeric"

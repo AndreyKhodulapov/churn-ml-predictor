@@ -7,7 +7,7 @@ import pytest
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 
-from src.core.constants import MAX_TUNING_FITS
+from src.core.constants import FEATURES, MAX_TUNING_FITS
 from src.core.exceptions import DatasetLoadError
 from src.core.openapi_examples import TRAIN_EXAMPLES, TUNE_EXAMPLES
 from src.main import app, lifespan
@@ -513,3 +513,32 @@ async def test_tune_accepts_every_docs_example(client, tuning_split, name):
     assert response.status_code == 200
     assert response.json()["best_config"]["model_type"] == config["model_type"]
     assert response.json()["scoring"] == config["scoring"]
+
+
+async def test_schema_describes_features_before_the_first_training(client):
+    response = await client.get("/model/schema")
+
+    assert response.status_code == 200
+    features = response.json()["features"]
+    assert [feature["name"] for feature in features] == list(FEATURES)
+    assert features[0] == {
+        "name": "monthly_fee",
+        "kind": "numeric",
+        "type": "number",
+        "allowed_values": None,
+        "minimum": 0,
+    }
+
+
+async def test_predict_accepts_customer_built_from_schema(client):
+    await client.post("/model/train")
+    features = (await client.get("/model/schema")).json()["features"]
+    # The smallest value of every numeric feature and the first allowed value of the others.
+    customer = {
+        feature["name"]: feature["minimum"] if feature["allowed_values"] is None else feature["allowed_values"][0]
+        for feature in features
+    }
+
+    response = await client.post("/predict", json=customer)
+
+    assert response.status_code == 200

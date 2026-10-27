@@ -22,6 +22,7 @@ customers with it.
 | POST | `/model/train` | train the churn model of the type and with the hyperparameters from the optional JSON body, save it, return accuracy and churn F1 on the test part |
 | POST | `/model/tune` | score a grid of hyperparameters by cross-validation on the train part, return the best config ready for `/model/train` and the five best combinations; changes no model |
 | GET | `/model/status` | whether a model is trained, when, its type, main hyperparameters and test metrics |
+| GET | `/model/schema` | features `/predict` expects, in the training order: how the model treats each one, its type and accepted values |
 
 Endpoints that need the dataset answer `503` while it is missing or broken, and `409` with the reason while it
 cannot be split and trained on (no labeled rows, a single churn class, too few rows); the service itself keeps running.
@@ -41,6 +42,20 @@ cannot be split and trained on (no labeled rows, a single churn class, too few r
 | `autopay_enabled` | int | `0` or `1` |
 
 A training dataset row has the same fields plus the `churn` label (`0` or `1`).
+
+`GET /model/schema` returns the same table for a client to build requests from. The features come in the order the
+model is trained on them, each with its `kind` (`numeric`, `binary` or `categorical`), JSON Schema `type`,
+`allowed_values` and `minimum`; it answers before the first training too.
+
+```json
+{"features": [
+  {"name": "monthly_fee", "kind": "numeric", "type": "number", "allowed_values": null, "minimum": 0},
+  ...
+  {"name": "autopay_enabled", "kind": "binary", "type": "integer", "allowed_values": [0, 1], "minimum": null},
+  {"name": "region", "kind": "categorical", "type": "string", "allowed_values": ["europe", "asia", "america", "africa"], "minimum": null},
+  ...
+]}
+```
 
 ## Dataset
 

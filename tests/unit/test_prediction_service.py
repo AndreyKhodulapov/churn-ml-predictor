@@ -1,13 +1,15 @@
+from typing import get_args
+
 import pandas as pd
 import pytest
 
-from src.core.constants import FEATURES
+from src.core.constants import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURES, DeviceType, PaymentMethod, Region
 from src.core.exceptions import ModelFeaturesMismatchError, ModelNotTrainedError
 from src.schemas.learning import TrainMetrics
-from src.schemas.prediction import FeatureVectorChurn
+from src.schemas.prediction import FeatureDescription, FeatureVectorChurn
 from src.services.learning import train_churn_model
 from src.services.model_storage import TrainedChurnModel
-from src.services.prediction import build_model_input, predict_churn
+from src.services.prediction import build_model_input, describe_features, predict_churn
 
 
 @pytest.fixture
@@ -93,3 +95,29 @@ def test_returns_no_predictions_for_no_customers(model):
 def test_refuses_without_trained_model(make_customer):
     with pytest.raises(ModelNotTrainedError):
         predict_churn(None, make_customer(0))
+
+
+def test_describe_features_lists_training_features_in_their_order():
+    assert [feature.name for feature in describe_features().features] == list(FEATURES)
+
+
+def test_describe_features_names_how_the_model_treats_each_feature():
+    kinds = {feature.name: feature.kind for feature in describe_features().features}
+
+    assert {name for name, kind in kinds.items() if kind == "categorical"} == set(CATEGORICAL_FEATURES)
+    assert {name for name, kind in kinds.items() if kind == "binary"} == set(BINARY_FEATURES)
+    assert kinds["monthly_fee"] == kinds["failed_payments"] == "numeric"
+
+
+def test_describe_features_gives_types_and_values_feature_vector_accepts():
+    features = {feature.name: feature for feature in describe_features().features}
+
+    assert features["monthly_fee"] == FeatureDescription(name="monthly_fee", kind="numeric", type="number", minimum=0)
+    assert features["support_requests"].type == "integer"
+    assert features["autopay_enabled"] == FeatureDescription(
+        name="autopay_enabled", kind="binary", type="integer", allowed_values=[0, 1]
+    )
+    assert features["region"].allowed_values == list(get_args(Region))
+    assert features["device_type"].allowed_values == list(get_args(DeviceType))
+    assert features["payment_method"].allowed_values == list(get_args(PaymentMethod))
+    assert all(feature.type == "string" for feature in features.values() if feature.kind == "categorical")
