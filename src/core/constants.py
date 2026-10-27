@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from sklearn.base import ClassifierMixin
 from sklearn.ensemble import RandomForestClassifier
@@ -19,6 +19,21 @@ MAIN_HYPERPARAMETERS: dict[ModelType, tuple[str, ...]] = {
     "logreg": ("C", "l1_ratio", "solver", "max_iter", "class_weight"),
     "random_forest": ("n_estimators", "max_depth", "min_samples_leaf", "max_features", "class_weight"),
 }
+
+# Metrics /model/tune can pick the best combination by: the ones /model/train reports, plus roc_auc, which scores
+# the predicted probabilities rather than the labels.
+TuningScoring = Literal["accuracy", "f1", "roc_auc"]
+# Grids /model/tune searches when the client sends none. A forest fit costs about 6 logreg ones, so its grid leaves
+# n_estimators at the default: more trees only make the answer stabler and slower, they trade off no metric.
+DEFAULT_PARAM_GRIDS: dict[ModelType, dict[str, list[Any]]] = {
+    "logreg": {"C": [0.01, 0.1, 1.0, 10.0], "class_weight": [None, "balanced"]},
+    "random_forest": {"max_depth": [None, 5, 10], "min_samples_leaf": [1, 5], "class_weight": [None, "balanced"]},
+}
+# Largest number of combinations times folds one /model/tune call may fit: the search runs while the client waits,
+# and 200 fits of a default forest take about a minute on the bundled dataset.
+MAX_TUNING_FITS = 200
+# Best combinations /model/tune returns next to the best one, to show how close the runners-up are.
+TUNING_TOP_CANDIDATES = 5
 
 TARGET_COLUMN = "churn"
 # Set by the meaning of each feature rather than by its dtype; autopay_enabled is a 0/1 flag kept as a number.
