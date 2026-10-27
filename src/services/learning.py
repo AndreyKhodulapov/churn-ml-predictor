@@ -1,12 +1,15 @@
+from collections.abc import Mapping
+from typing import Any
+
 import pandas as pd
 from sklearn.base import ClassifierMixin
 from sklearn.compose import ColumnTransformer
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-from src.core.constants import CATEGORICAL_FEATURES, NUMERIC_FEATURES, ClassWeight
+from src.core.constants import CATEGORICAL_FEATURES, CLASSIFIERS, NUMERIC_FEATURES, RANDOM_STATE, ClassWeight, ModelType
+from src.core.exceptions import InvalidHyperparametersError
 from src.schemas.learning import TrainMetrics
 from src.services.preprocessing import build_imputer, split_numeric_features
 
@@ -31,6 +34,23 @@ def build_feature_transformer(
     )
 
 
+def build_classifier(model_type: ModelType, hyperparameters: Mapping[str, Any]) -> ClassifierMixin:
+    """Unfitted classifier of model_type with hyperparameters set over the scikit-learn defaults.
+
+    Only the names are checked here: scikit-learn checks the values when the classifier is fitted.
+    """
+    classifier = CLASSIFIERS[model_type]()
+    valid = classifier.get_params()
+    unknown = sorted(set(hyperparameters) - set(valid))
+    if unknown:
+        raise InvalidHyperparametersError(
+            f"Unknown hyperparameters of {model_type}: {', '.join(unknown)}; valid ones are {', '.join(sorted(valid))}"
+        )
+    # A random forest draws its bootstrap samples at random: a fixed seed makes training on the same split
+    # give the same model. A client may still pass its own random_state.
+    return classifier.set_params(**{"random_state": RANDOM_STATE, **hyperparameters})
+
+
 def build_churn_pipeline(
     numeric_features: tuple[str, ...], categorical_features: tuple[str, ...], classifier: ClassifierMixin
 ) -> Pipeline:
@@ -51,7 +71,7 @@ def build_churn_pipeline(
 
 def train_churn_model(X_train: pd.DataFrame, y_train: pd.Series, class_weight: ClassWeight | None = None) -> Pipeline:
     """Fit a new churn pipeline on the train part; every call returns a separate model."""
-    classifier = LogisticRegression(class_weight=class_weight)
+    classifier = build_classifier("logreg", {"class_weight": class_weight})
     pipeline = build_churn_pipeline(NUMERIC_FEATURES, CATEGORICAL_FEATURES, classifier)
     return pipeline.fit(X_train, y_train)
 

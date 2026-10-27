@@ -4,14 +4,17 @@ from unittest.mock import Mock
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.utils.validation import check_is_fitted
 
-from src.core.constants import CATEGORICAL_FEATURES, NUMERIC_FEATURES
+from src.core.constants import CATEGORICAL_FEATURES, NUMERIC_FEATURES, RANDOM_STATE
+from src.core.exceptions import InvalidHyperparametersError
 from src.schemas.learning import TrainMetrics
 from src.services.learning import (
     build_churn_pipeline,
+    build_classifier,
     build_feature_transformer,
     evaluate_churn_model,
     train_churn_model,
@@ -41,6 +44,52 @@ def X_train(make_X) -> pd.DataFrame:
 
 
 y_train = pd.Series([0, 1, 0, 1])
+
+
+@pytest.mark.parametrize(
+    ("model_type", "hyperparameters", "expected_class"),
+    [
+        ("logreg", {"C": 0.5, "class_weight": "balanced"}, LogisticRegression),
+        ("random_forest", {"n_estimators": 10, "max_depth": 3}, RandomForestClassifier),
+    ],
+)
+def test_build_classifier_creates_model_of_type_with_hyperparameters(model_type, hyperparameters, expected_class):
+    classifier = build_classifier(model_type, hyperparameters)
+
+    assert type(classifier) is expected_class
+    assert classifier.get_params().items() >= hyperparameters.items()
+
+
+@pytest.mark.parametrize(
+    ("model_type", "model_class"), [("logreg", LogisticRegression), ("random_forest", RandomForestClassifier)]
+)
+def test_build_classifier_keeps_sklearn_defaults_except_fixed_random_state(model_type, model_class):
+    classifier = build_classifier(model_type, {})
+
+    assert classifier.get_params() == {**model_class().get_params(), "random_state": RANDOM_STATE}
+
+
+def test_build_classifier_lets_client_override_random_state():
+    assert build_classifier("random_forest", {"random_state": 7}).random_state == 7
+
+
+def test_build_classifier_returns_separate_model_on_every_call():
+    assert build_classifier("logreg", {}) is not build_classifier("logreg", {})
+
+
+def test_random_forest_trains_reproducibly_by_default(X_train):
+    def fit_forest() -> Pipeline:
+        classifier = build_classifier("random_forest", {"n_estimators": 5})
+        return build_churn_pipeline(NUMERIC_FEATURES, CATEGORICAL_FEATURES, classifier).fit(X_train, y_train)
+
+    np.testing.assert_array_equal(fit_forest().predict_proba(X_train), fit_forest().predict_proba(X_train))
+
+
+def test_build_classifier_rejects_unknown_hyperparameters():
+    with pytest.raises(InvalidHyperparametersError) as error:
+        build_classifier("logreg", {"n_estimators": 10, "foo": 1, "C": 0.5})
+
+    assert str(error.value).startswith("Unknown hyperparameters of logreg: foo, n_estimators; valid ones are C,")
 
 
 def test_churn_pipeline_fills_gaps_transforms_and_classifies_with_given_classifier():

@@ -1,11 +1,20 @@
 from pathlib import Path
 from typing import Literal
 
+from sklearn.base import ClassifierMixin
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+
 Region = Literal["europe", "asia", "america", "africa"]
 DeviceType = Literal["mobile", "desktop", "tablet"]
 PaymentMethod = Literal["card", "paypal", "crypto"]
 # "balanced" weights each class inversely to its share, so the rare churners count as much as those who stay.
 ClassWeight = Literal["balanced"]
+ModelType = Literal["logreg", "random_forest"]
+CLASSIFIERS: dict[ModelType, type[ClassifierMixin]] = {
+    "logreg": LogisticRegression,
+    "random_forest": RandomForestClassifier,
+}
 
 TARGET_COLUMN = "churn"
 # Set by the meaning of each feature rather than by its dtype; autopay_enabled is a 0/1 flag kept as a number.
