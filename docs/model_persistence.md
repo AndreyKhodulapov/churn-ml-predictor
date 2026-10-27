@@ -83,6 +83,11 @@ disk, what is saved with it and what can break when it is loaded back.
 - The model is loaded once when the service starts, not on every request.
 - A missing file is normal before the first training: the service starts
   without a model and reports it in its status.
+- The fitted pipeline remembers the columns it was trained on
+  (`feature_names_in_`). A model saved before a feature was added, renamed or
+  dropped still unpickles fine and would fail only on `/predict`, so the
+  service compares those columns with the fields of `FeatureVectorChurn` at
+  load and rejects a model that does not match, asking to retrain it.
 - A file that cannot be loaded is logged and the service still starts, so a
   broken model does not take down the endpoints that do not need it; a new
   training writes a good file over it.

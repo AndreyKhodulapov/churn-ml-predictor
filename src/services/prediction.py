@@ -1,9 +1,9 @@
 import pandas as pd
 from sklearn.pipeline import Pipeline
 
-from src.core.exceptions import ModelFeaturesMismatchError, ModelNotTrainedError
+from src.core.exceptions import ModelNotTrainedError
 from src.schemas.prediction import FeatureVectorChurn, PredictionResponseChurn
-from src.services.model_storage import TrainedChurnModel
+from src.services.model_storage import TrainedChurnModel, check_model_features
 
 
 def build_model_input(pipeline: Pipeline, customers: list[FeatureVectorChurn]) -> pd.DataFrame:
@@ -12,13 +12,7 @@ def build_model_input(pipeline: Pipeline, customers: list[FeatureVectorChurn]) -
     The ColumnTransformer steps pick columns by name and would silently accept another order, ignore an extra column
     and fill a missing one as a gap, so the set of features is checked here rather than left to them.
     """
-    # Remembered by fit() from the columns of the train part, so they are the features of this very model.
-    features = list(pipeline.feature_names_in_)
-    sent = FeatureVectorChurn.model_fields.keys()
-    if set(features) != sent:
-        raise ModelFeaturesMismatchError(
-            f"Churn model is trained on features {features}, a request carries {sorted(sent)}"
-        )
+    features = check_model_features(pipeline)
     return pd.DataFrame([customer.model_dump() for customer in customers], columns=features)
 
 
