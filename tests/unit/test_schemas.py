@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from src.schemas.dataset import DatasetRowChurn
+from src.schemas.learning import TrainingConfigChurn
 from src.schemas.prediction import FeatureVectorChurn
 
 
@@ -75,3 +76,36 @@ def test_dataset_row_requires_all_columns(customer_features):
 
     with pytest.raises(ValidationError):
         DatasetRowChurn(**customer_features, churn=1)
+
+
+def test_training_config_defaults_to_logreg_with_sklearn_defaults():
+    config = TrainingConfigChurn()
+
+    assert config.model_dump() == {"model_type": "logreg", "hyperparameters": {}}
+
+
+def test_training_config_accepts_model_type_with_hyperparameters():
+    config = TrainingConfigChurn(model_type="random_forest", hyperparameters={"n_estimators": 300, "max_depth": None})
+
+    assert config.model_type == "random_forest"
+    assert config.hyperparameters == {"n_estimators": 300, "max_depth": None}
+
+
+def test_training_configs_do_not_share_hyperparameters():
+    first, second = TrainingConfigChurn(), TrainingConfigChurn()
+    first.hyperparameters["C"] = 0.5
+
+    assert second.hyperparameters == {}
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"model_type": "xgboost"},
+        {"hyperparameters": ["C", 0.5]},
+        {"hyperparams": {"C": 0.5}},
+    ],
+)
+def test_training_config_rejects_invalid_fields(fields):
+    with pytest.raises(ValidationError):
+        TrainingConfigChurn(**fields)
