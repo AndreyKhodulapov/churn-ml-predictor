@@ -13,6 +13,12 @@ CLASSIFIERS: dict[ModelType, type[ClassifierMixin]] = {
     "logreg": LogisticRegression,
     "random_forest": RandomForestClassifier,
 }
+# Hyperparameters that shape each model the most: /model/status shows their values even when training left them
+# at the scikit-learn defaults.
+MAIN_HYPERPARAMETERS: dict[ModelType, tuple[str, ...]] = {
+    "logreg": ("C", "l1_ratio", "solver", "max_iter", "class_weight"),
+    "random_forest": ("n_estimators", "max_depth", "min_samples_leaf", "max_features", "class_weight"),
+}
 
 TARGET_COLUMN = "churn"
 # Set by the meaning of each feature rather than by its dtype; autopay_enabled is a 0/1 flag kept as a number.

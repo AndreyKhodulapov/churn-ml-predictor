@@ -34,4 +34,5 @@ class ModelStatus(BaseSchema):
     metrics: TrainMetrics | None = None
     # Without them the metrics are hard to compare: e.g. balanced class weights trade accuracy for churn F1.
     model_type: ModelType | None = None
+    # The main hyperparameters of model_type and every requested one, with the values the model was trained with.
     hyperparameters: dict[str, Any] | None = None

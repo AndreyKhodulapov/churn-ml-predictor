@@ -13,6 +13,7 @@ from sklearn.pipeline import Pipeline
 from src.core.constants import MODEL_PATH, ModelType
 from src.core.exceptions import ModelLoadError
 from src.schemas.learning import ModelStatus, TrainMetrics
+from src.services.learning import describe_hyperparameters
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +109,7 @@ class ChurnModelStore:
             trained_at=model.trained_at,
             metrics=model.metrics,
             model_type=model.model_type,
-            hyperparameters=model.hyperparameters,
+            hyperparameters=describe_hyperparameters(model.pipeline, model.model_type, model.hyperparameters),
         )
 
 

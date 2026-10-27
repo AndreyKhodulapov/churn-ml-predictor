@@ -135,8 +135,29 @@ async def test_status_reports_the_last_training(client, model_store):
     assert body["trained"] is True
     assert body["metrics"] == metrics
     assert body["model_type"] == "random_forest"
-    assert body["hyperparameters"] == {"n_estimators": 20, "class_weight": "balanced"}
+    assert body["hyperparameters"] == {
+        "n_estimators": 20,
+        "max_depth": None,
+        "min_samples_leaf": 1,
+        "max_features": "sqrt",
+        "class_weight": "balanced",
+    }
     assert datetime.fromisoformat(body["trained_at"]) == model_store.model.trained_at
+
+
+async def test_status_shows_sklearn_defaults_of_model_trained_without_config(client):
+    await client.post("/model/train")
+
+    body = (await client.get("/model/status")).json()
+
+    assert body["model_type"] == "logreg"
+    assert body["hyperparameters"] == {
+        "C": 1.0,
+        "l1_ratio": 0.0,
+        "solver": "lbfgs",
+        "max_iter": 100,
+        "class_weight": None,
+    }
 
 
 async def test_status_does_not_need_the_dataset(client, model_store):

@@ -16,6 +16,7 @@ from src.services.learning import (
     build_churn_pipeline,
     build_classifier,
     build_feature_transformer,
+    describe_hyperparameters,
     evaluate_churn_model,
     train_churn_model,
 )
@@ -182,6 +183,28 @@ def test_train_churn_model_returns_separate_model_on_every_call(X_train):
     first, second = train_churn_model(X_train, y_train), train_churn_model(X_train, y_train)
 
     assert first is not second
+
+
+def test_describe_hyperparameters_shows_main_ones_with_sklearn_defaults(X_train):
+    pipeline = train_churn_model(X_train, y_train, "random_forest", {"n_estimators": 5})
+
+    assert describe_hyperparameters(pipeline, "random_forest", {"n_estimators": 5}) == {
+        "n_estimators": 5,
+        "max_depth": None,
+        "min_samples_leaf": 1,
+        "max_features": "sqrt",
+        "class_weight": None,
+    }
+
+
+def test_describe_hyperparameters_adds_requested_ones_beyond_the_main(X_train):
+    requested = {"tol": 0.001, "C": 0.5}
+    pipeline = train_churn_model(X_train, y_train, "logreg", requested)
+
+    described = describe_hyperparameters(pipeline, "logreg", requested)
+
+    assert list(described) == ["C", "l1_ratio", "solver", "max_iter", "class_weight", "tol"]
+    assert (described["C"], described["tol"]) == (0.5, 0.001)
 
 
 def fixed_predictions(predictions: list[int]) -> Mock:

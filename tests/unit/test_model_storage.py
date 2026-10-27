@@ -199,7 +199,7 @@ def test_store_status_reports_served_model(trained_model, model_path):
         trained_at=datetime(2026, 10, 25, 12, 30, tzinfo=UTC),
         metrics=TrainMetrics(accuracy=0.75, f1=0.5),
         model_type="logreg",
-        hyperparameters={"C": 0.5, "class_weight": "balanced"},
+        hyperparameters={"C": 0.5, "l1_ratio": 0.0, "solver": "lbfgs", "max_iter": 100, "class_weight": "balanced"},
     )
 
 

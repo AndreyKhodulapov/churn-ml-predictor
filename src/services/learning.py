@@ -8,7 +8,14 @@ from sklearn.metrics import accuracy_score, f1_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-from src.core.constants import CATEGORICAL_FEATURES, CLASSIFIERS, NUMERIC_FEATURES, RANDOM_STATE, ModelType
+from src.core.constants import (
+    CATEGORICAL_FEATURES,
+    CLASSIFIERS,
+    MAIN_HYPERPARAMETERS,
+    NUMERIC_FEATURES,
+    RANDOM_STATE,
+    ModelType,
+)
 from src.core.exceptions import InvalidHyperparametersError
 from src.schemas.learning import TrainMetrics
 from src.services.preprocessing import build_imputer, split_numeric_features
@@ -86,6 +93,15 @@ def train_churn_model(
     # hyperparameters do not fit the model.
     except ValueError as e:
         raise InvalidHyperparametersError(f"Cannot train {model_type} with these hyperparameters: {e}") from e
+
+
+def describe_hyperparameters(pipeline: Pipeline, model_type: ModelType, requested: Mapping[str, Any]) -> dict[str, Any]:
+    """Values the classifier of the pipeline was trained with: the main ones of model_type and every requested one.
+
+    They are read from the classifier itself, so a hyperparameter left at its default shows the actual value.
+    """
+    params = pipeline.named_steps["model"].get_params()
+    return {name: params[name] for name in (*MAIN_HYPERPARAMETERS[model_type], *requested)}
 
 
 def evaluate_churn_model(pipeline: Pipeline, X_test: pd.DataFrame, y_test: pd.Series) -> TrainMetrics:
