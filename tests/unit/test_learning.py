@@ -162,6 +162,22 @@ def test_train_churn_model_fits_classifier_of_model_type_with_hyperparameters(X_
     assert (model.n_estimators, model.class_weight) == (5, "balanced")
 
 
+@pytest.mark.parametrize(
+    ("model_type", "hyperparameters", "reason"),
+    [
+        ("logreg", {"C": -1}, "The 'C' parameter of LogisticRegression must be a float in the range (0.0, inf]"),
+        ("logreg", {"l1_ratio": 1}, "Solver lbfgs supports only 'l2' or None penalties, got l1 penalty"),
+        ("random_forest", {"n_estimators": 0}, "The 'n_estimators' parameter of RandomForestClassifier must be"),
+        ("random_forest", {"oob_score": True, "bootstrap": False}, "Out of bag estimation only available if bootstrap"),
+    ],
+)
+def test_train_churn_model_rejects_hyperparameters_the_model_refuses(X_train, model_type, hyperparameters, reason):
+    with pytest.raises(InvalidHyperparametersError) as error:
+        train_churn_model(X_train, y_train, model_type, hyperparameters)
+
+    assert str(error.value).startswith(f"Cannot train {model_type} with these hyperparameters: {reason}")
+
+
 def test_train_churn_model_returns_separate_model_on_every_call(X_train):
     first, second = train_churn_model(X_train, y_train), train_churn_model(X_train, y_train)
 

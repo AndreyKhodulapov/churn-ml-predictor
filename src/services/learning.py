@@ -78,7 +78,14 @@ def train_churn_model(
     """Fit a new churn pipeline with a model_type classifier on the train part; every call returns a separate model."""
     classifier = build_classifier(model_type, hyperparameters or {})
     pipeline = build_churn_pipeline(NUMERIC_FEATURES, CATEGORICAL_FEATURES, classifier)
-    return pipeline.fit(X_train, y_train)
+    try:
+        return pipeline.fit(X_train, y_train)
+    # scikit-learn checks hyperparameter values only in fit(): a value out of range raises InvalidParameterError,
+    # a subclass of ValueError, and a forbidden combination, like l1_ratio=1 (an l1 penalty) with the lbfgs
+    # solver, a plain ValueError. The train part is already validated, so a ValueError here means the
+    # hyperparameters do not fit the model.
+    except ValueError as e:
+        raise InvalidHyperparametersError(f"Cannot train {model_type} with these hyperparameters: {e}") from e
 
 
 def evaluate_churn_model(pipeline: Pipeline, X_test: pd.DataFrame, y_test: pd.Series) -> TrainMetrics:

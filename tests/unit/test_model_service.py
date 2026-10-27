@@ -1,6 +1,7 @@
 import pandas as pd
 import pytest
 
+from src.core.exceptions import InvalidHyperparametersError
 from src.schemas.learning import TrainingConfigChurn, TrainMetrics
 from src.services.model import train_and_save_churn_model
 from src.services.model_storage import ChurnModelStore, load_churn_model
@@ -53,11 +54,10 @@ def test_serves_and_saves_the_trained_model_with_its_type_and_hyperparameters(se
 def test_failed_training_keeps_the_previous_model(separable_split, store):
     train_and_save_churn_model(separable_split, TrainingConfigChurn(), store)
     trained = store.model
-    single_class_split = separable_split._replace(y_train=pd.Series([0] * 6))
 
-    # LogisticRegression refuses to fit on a single class.
-    with pytest.raises(ValueError):
-        train_and_save_churn_model(single_class_split, TrainingConfigChurn(), store)
+    # LogisticRegression refuses a negative regularization strength only once it is fitted.
+    with pytest.raises(InvalidHyperparametersError):
+        train_and_save_churn_model(separable_split, TrainingConfigChurn(hyperparameters={"C": -1}), store)
 
     assert store.model is trained
     assert load_churn_model(store.path).trained_at == trained.trained_at

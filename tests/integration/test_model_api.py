@@ -168,6 +168,39 @@ async def test_train_rejects_invalid_config(client, model_store, config, loc):
     assert model_store.model is None
 
 
+@pytest.mark.parametrize(
+    ("config", "detail"),
+    [
+        (
+            {"hyperparameters": {"n_estimators": 10}},
+            "Unknown hyperparameters of logreg: n_estimators; valid ones are C,",
+        ),
+        (
+            {"hyperparameters": {"class_weight": "heavy"}},
+            "Cannot train logreg with these hyperparameters: The 'class_weight'",
+        ),
+        (
+            {"hyperparameters": {"l1_ratio": 1}},
+            "Cannot train logreg with these hyperparameters: Solver lbfgs supports",
+        ),
+        (
+            {"model_type": "random_forest", "hyperparameters": {"max_depth": 0}},
+            "Cannot train random_forest with these hyperparameters: The 'max_depth' parameter",
+        ),
+    ],
+)
+async def test_train_answers_422_on_hyperparameters_the_model_refuses(client, model_store, config, detail):
+    await client.post("/model/train")
+    trained = model_store.model
+
+    response = await client.post("/model/train", json=config)
+
+    assert response.status_code == 422
+    assert response.json()["detail"].startswith(detail)
+    assert model_store.model is trained
+    assert load_churn_model(model_store.path).trained_at == trained.trained_at
+
+
 async def test_train_fits_and_scores_served_split(client, separable_split):
     response = await client.post("/model/train")
 
