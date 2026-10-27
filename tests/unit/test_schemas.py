@@ -50,6 +50,13 @@ def test_feature_vector_requires_all_fields(customer_features):
         FeatureVectorChurn(**customer_features)
 
 
+def test_feature_vector_rejects_unknown_field(customer_features):
+    customer_features["contract_type"] = "annual"
+
+    with pytest.raises(ValidationError, match="contract_type"):
+        FeatureVectorChurn(**customer_features)
+
+
 def test_dataset_row_has_same_features_as_feature_vector():
     assert DatasetRowChurn.model_fields.keys() - {"churn"} == FeatureVectorChurn.model_fields.keys()
 

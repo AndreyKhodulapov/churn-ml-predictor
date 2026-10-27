@@ -51,7 +51,8 @@ An unknown path or method gets the same body, with the status phrase as `code`, 
 | `payment_method` | str | `card`, `paypal`, `crypto` |
 | `autopay_enabled` | int | `0` or `1` |
 
-A training dataset row has the same fields plus the `churn` label (`0` or `1`).
+A training dataset row has the same fields plus the `churn` label (`0` or `1`). A `/predict` customer with a field
+that is not in this table, `churn` included, gets `422`, so a client never believes the model uses a field it ignores.
 
 `GET /model/schema` returns the same table for a client to build requests from. The features come in the order the
 model is trained on them, each with its `kind` (`numeric`, `binary` or `categorical`), JSON Schema `type`,

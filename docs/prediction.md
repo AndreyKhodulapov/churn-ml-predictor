@@ -10,6 +10,10 @@ in `/docs`.
   scikit-learn knows nothing about Pydantic: it calls `np.asarray()` on its
   input. A single object becomes a 0-d array ("Expected 2D array, got scalar
   array"), a list of them a 1-d array of objects.
+- A field outside `FeatureVectorChurn` gets `422` (`extra="forbid"`).
+  Pydantic drops unknown fields by default, so a client sending, say,
+  `contract_type` or the `churn` label of a dataset row would get a
+  prediction and believe the model took that field into account.
 - The pipeline was fitted on a `pd.DataFrame`, so the input is rebuilt the
   same way: one row per customer and one column per feature.
 - The columns are taken from `pipeline.feature_names_in_`, which `fit()`

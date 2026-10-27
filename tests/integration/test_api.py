@@ -1,3 +1,5 @@
+import pytest
+
 from src.schemas.prediction import FeatureVectorChurn
 
 
@@ -29,6 +31,31 @@ async def test_predict_rejects_missing_feature(client, customer_features):
     # The body is one customer or a list of them, so the error names the branch the input was checked against.
     assert response.json()["details"][0]["loc"] == ["body", "FeatureVectorChurn", "failed_payments"]
     assert len(response.json()["details"]) == 1
+
+
+@pytest.mark.parametrize("field", ["contract_type", "churn"])
+async def test_predict_rejects_unknown_feature(client, customer_features, field):
+    customer_features[field] = 1
+
+    response = await client.post("/predict", json=customer_features)
+
+    assert response.status_code == 422
+    assert response.json()["details"] == [
+        {
+            "loc": ["body", "FeatureVectorChurn", field],
+            "message": "Extra inputs are not permitted",
+            "type": "extra_forbidden",
+        }
+    ]
+
+
+async def test_predict_rejects_unknown_feature_of_a_customer_in_a_list(client, customer_features):
+    response = await client.post("/predict", json=[customer_features, {**customer_features, "contract_type": "annual"}])
+
+    assert response.status_code == 422
+    assert [error["loc"] for error in response.json()["details"]] == [
+        ["body", "list[FeatureVectorChurn]", 1, "contract_type"]
+    ]
 
 
 async def test_predict_names_the_invalid_customer_of_a_list(client, customer_features):

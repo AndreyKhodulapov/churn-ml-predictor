@@ -1,6 +1,6 @@
 from typing import Annotated, Any, Literal
 
-from pydantic import Discriminator, Field, Tag
+from pydantic import ConfigDict, Discriminator, Field, Tag
 
 from src.core.constants import DeviceType, PaymentMethod, Region
 from src.schemas.base import BaseSchema
@@ -8,6 +8,10 @@ from src.schemas.base import BaseSchema
 
 class FeatureVectorChurn(BaseSchema):
     """Customer features the churn model makes a prediction from."""
+
+    # A field the model does not know would otherwise be dropped silently, and the client would believe the
+    # prediction takes it into account; a misspelled feature also gets named as such, not only as missing.
+    model_config = ConfigDict(extra="forbid")
 
     monthly_fee: float = Field(ge=0, examples=[29.99])
     usage_hours: float = Field(ge=0, examples=[42.5])
