@@ -2,8 +2,8 @@ import pandas as pd
 import pytest
 
 from src.core.exceptions import InvalidHyperparametersError
-from src.schemas.learning import TrainingConfigChurn, TrainMetrics
-from src.services.model import train_and_save_churn_model
+from src.schemas.learning import TrainingConfigChurn, TrainMetrics, TuningConfigChurn
+from src.services.model import train_and_save_churn_model, tune_churn_model_on_split
 from src.services.model_storage import ChurnModelStore, load_churn_model
 from src.services.preprocessing import SplitData
 
@@ -61,3 +61,12 @@ def test_failed_training_keeps_the_previous_model(separable_split, store):
 
     assert store.model is trained
     assert load_churn_model(store.path).trained_at == trained.trained_at
+
+
+def test_tuning_uses_the_train_part_only(separable_split):
+    # A test part the pipeline cannot even read: tuning must not touch it.
+    split = separable_split._replace(X_test=None, y_test=None)
+
+    result = tune_churn_model_on_split(split, TuningConfigChurn(param_grid={"C": [0.1, 1.0]}, cv=3))
+
+    assert result.best_score == 1.0

@@ -9,9 +9,9 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.utils.validation import check_is_fitted
 
-from src.core.constants import CATEGORICAL_FEATURES, NUMERIC_FEATURES, RANDOM_STATE
-from src.core.exceptions import InvalidHyperparametersError
-from src.schemas.learning import TrainMetrics
+from src.core.constants import CATEGORICAL_FEATURES, NUMERIC_FEATURES, RANDOM_STATE, TUNING_TOP_CANDIDATES
+from src.core.exceptions import DatasetNotTrainableError, InvalidHyperparametersError
+from src.schemas.learning import TrainingConfigChurn, TrainMetrics, TuningConfigChurn, TuningResultChurn
 from src.services.learning import (
     build_churn_pipeline,
     build_classifier,
@@ -19,6 +19,7 @@ from src.services.learning import (
     describe_hyperparameters,
     evaluate_churn_model,
     train_churn_model,
+    tune_churn_model,
 )
 
 
@@ -233,3 +234,100 @@ def test_evaluate_churn_model_gives_zero_f1_to_model_that_never_predicts_churn()
         )
 
     assert metrics == TrainMetrics(accuracy=0.75, f1=0.0)
+
+
+@pytest.fixture
+def tuning_X(make_X) -> pd.DataFrame:
+    # Failed payments mostly decide churn, with one customer of each class against the rule, so scores differ by C.
+    return make_X(
+        12,
+        failed_payments=[0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 0],
+        usage_hours=[float(hours) for hours in range(12)],
+    )
+
+
+tuning_y = pd.Series([0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1])
+
+
+def tune(tuning_X, **config) -> TuningResultChurn:
+    return tune_churn_model(tuning_X, tuning_y, TuningConfigChurn(cv=3, **config))
+
+
+def test_tune_churn_model_returns_best_combination_as_train_config(tuning_X):
+    result = tune(tuning_X, param_grid={"C": [0.001, 1.0], "class_weight": [None, "balanced"]})
+
+    best = result.candidates[0]
+    assert result.best_config == TrainingConfigChurn(model_type="logreg", hyperparameters=best.hyperparameters)
+    assert result.best_score == best.mean_score
+    assert result.scoring == "f1"
+    # The names are the classifier's ones, without the model__ prefix of the pipeline step.
+    assert best.hyperparameters.keys() == {"C", "class_weight"}
+
+
+def test_tune_churn_model_returns_top_candidates_best_first(tuning_X):
+    result = tune(tuning_X, param_grid={"C": [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]})
+
+    assert len(result.candidates) == TUNING_TOP_CANDIDATES
+    scores = [candidate.mean_score for candidate in result.candidates]
+    assert scores == sorted(scores, reverse=True)
+    assert all(candidate.std_score >= 0 for candidate in result.candidates)
+
+
+def test_tune_churn_model_returns_every_combination_of_a_small_grid(tuning_X):
+    result = tune(tuning_X, param_grid={"C": [0.1, 1.0]})
+
+    assert sorted(candidate.hyperparameters["C"] for candidate in result.candidates) == [0.1, 1.0]
+
+
+def test_tune_churn_model_searches_default_grid_without_param_grid(tuning_X):
+    # A forest grid costs seconds here; that a model type picks its own default grid is checked by the schema tests.
+    result = tune(tuning_X, scoring="roc_auc")
+
+    assert result.best_config.hyperparameters.keys() == {"C", "class_weight"}
+    assert 0 <= result.best_score <= 1
+
+
+def test_tune_churn_model_is_reproducible(tuning_X):
+    config = {"model_type": "random_forest", "param_grid": {"n_estimators": [5, 10], "max_depth": [2, None]}}
+
+    assert tune(tuning_X, **config) == tune(tuning_X, **config)
+
+
+def test_tune_churn_model_rejects_unknown_hyperparameters(tuning_X):
+    with pytest.raises(InvalidHyperparametersError, match="Unknown hyperparameters of logreg: n_estimators;"):
+        tune(tuning_X, param_grid={"C": [1.0], "n_estimators": [10]})
+
+
+@pytest.mark.parametrize(
+    ("param_grid", "detail"),
+    [
+        (
+            {"C": [0, 1.0]},
+            (
+                'Cannot train logreg with 1 of 2 combinations of the grid: {"C": 0}; the first one fails with: '
+                "The 'C' parameter of LogisticRegression must be a float in the range (0.0, inf]"
+            ),
+        ),
+        (
+            {"l1_ratio": [1], "C": [0.1, 1.0]},
+            (
+                'Cannot train logreg with 2 of 2 combinations of the grid: {"C": 0.1, "l1_ratio": 1}, '
+                '{"C": 1.0, "l1_ratio": 1}; the first one fails with: Solver lbfgs supports only'
+            ),
+        ),
+    ],
+)
+def test_tune_churn_model_names_combinations_the_model_refuses(tuning_X, param_grid, detail):
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with pytest.raises(InvalidHyperparametersError) as error:
+            tune(tuning_X, param_grid=param_grid)
+
+    assert str(error.value).startswith(detail)
+    # The refused combinations are reported by the error, not by sklearn warnings in the server log.
+    assert caught == []
+
+
+def test_tune_churn_model_needs_every_class_in_every_fold(tuning_X):
+    with pytest.raises(DatasetNotTrainableError, match="7-fold cross-validation needs at least 7 customers"):
+        tune_churn_model(tuning_X, tuning_y, TuningConfigChurn(cv=7))
