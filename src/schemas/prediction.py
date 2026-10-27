@@ -33,10 +33,11 @@ def body_shape(body: Any) -> str:
 
 # A /predict body: one customer or a list of them. The branch is picked by the shape of the body, so a body that fails
 # validation gets the errors of that branch only rather than of both. The tags are the names pydantic gives the
-# branches of a plain union, and the loc of every error starts with the tag of its branch.
+# branches of a plain union, and the loc of every error starts with the tag of its branch. An empty list is refused:
+# it is most likely a client bug, like a filter that matched no customers, and an empty answer would hide it.
 PredictionRequestChurn = Annotated[
     Annotated[FeatureVectorChurn, Tag("FeatureVectorChurn")]
-    | Annotated[list[FeatureVectorChurn], Tag("list[FeatureVectorChurn]")],
+    | Annotated[list[FeatureVectorChurn], Field(min_length=1), Tag("list[FeatureVectorChurn]")],
     Discriminator(body_shape),
 ]
 

@@ -77,11 +77,27 @@ async def test_predict_several_customers_keeps_their_order(trained_client):
     assert risky["probability_churn"] > loyal["probability_churn"]
 
 
-async def test_predict_empty_list_returns_no_predictions(trained_client):
+async def test_predict_rejects_empty_list(trained_client):
     response = await trained_client.post("/predict", json=[])
 
-    assert response.status_code == 200
-    assert response.json() == []
+    assert response.status_code == 422
+    assert response.json() == {
+        "code": "validation_error",
+        "message": "Request failed validation, see details for every error",
+        "details": [
+            {
+                "loc": ["body", "list[FeatureVectorChurn]"],
+                "message": "List should have at least 1 item after validation, not 0",
+                "type": "too_short",
+            }
+        ],
+    }
+
+
+async def test_predict_rejects_empty_list_before_looking_for_model(client):
+    response = await client.post("/predict", json=[])
+
+    assert response.status_code == 422
 
 
 async def test_predict_rejects_invalid_customer_in_list(trained_client):
@@ -97,10 +113,10 @@ async def test_openapi_shows_predict_examples(client):
     examples = operation["requestBody"]["content"]["application/json"]["examples"]
     assert examples["one_customer"]["value"] == LOYAL_CUSTOMER
     assert examples["several_customers"]["value"] == [LOYAL_CUSTOMER, RISKY_CUSTOMER]
-    # Picking the branch by the shape of the body leaves the schema a choice of one customer or a list.
+    # Picking the branch by the shape of the body leaves the schema a choice of one customer or a non-empty list.
     assert operation["requestBody"]["content"]["application/json"]["schema"]["oneOf"] == [
         {"$ref": "#/components/schemas/FeatureVectorChurn"},
-        {"type": "array", "items": {"$ref": "#/components/schemas/FeatureVectorChurn"}},
+        {"type": "array", "items": {"$ref": "#/components/schemas/FeatureVectorChurn"}, "minItems": 1},
     ]
     response_examples = operation["responses"]["200"]["content"]["application/json"]["examples"]
     assert response_examples["several_customers"]["value"] == [LOYAL_CUSTOMER_PREDICTION, RISKY_CUSTOMER_PREDICTION]

@@ -27,7 +27,8 @@ def predict_churn(
         raise ModelNotTrainedError
     customers = features if isinstance(features, list) else [features]
     if not customers:
-        # sklearn refuses an empty DataFrame; no customers simply means no predictions.
+        # /predict refuses an empty batch, but for the service no customers simply means no predictions,
+        # while sklearn refuses an empty DataFrame.
         return []
     try:
         # The pipeline picks columns by name, so it needs a DataFrame like the one it was fitted on, not schema objects.

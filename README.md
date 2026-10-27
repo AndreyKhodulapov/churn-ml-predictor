@@ -353,7 +353,8 @@ was checked against, followed by the index of the customer in a list:
 }
 ```
 
-The invalid value itself is not repeated in the answer.
+The invalid value itself is not repeated in the answer. An empty list is refused the same way, with `too_short` at
+`["body", "list[FeatureVectorChurn]"]`.
 
 How it works: [docs/prediction.md](docs/prediction.md). The models, their hyperparameters and tuning:
 [docs/model_training.md](docs/model_training.md).

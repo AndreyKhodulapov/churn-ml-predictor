@@ -36,8 +36,12 @@ in `/docs`.
   drifted from `FeatureVectorChurn`.
 - The fitted pipeline fills gaps, scales and encodes the row itself, so the
   endpoint passes raw features and cannot drift from what training did.
-- An empty list is answered with an empty list before reaching the model:
-  scikit-learn refuses a DataFrame with no rows.
+- An empty list gets `422` (`min_length=1` on the list branch of the body,
+  `minItems` in OpenAPI). It is most likely a client bug, like a filter that
+  matched no customers, and an empty answer would hide it. The validation runs
+  before the endpoint, so the answer is the same with no trained model.
+  `predict_churn()` itself still answers no customers with no predictions:
+  scikit-learn would refuse a DataFrame with no rows.
 
 ## predict and predict_proba
 

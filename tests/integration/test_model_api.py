@@ -11,6 +11,7 @@ from src.core.constants import FEATURES, MAX_TUNING_FITS
 from src.core.exceptions import DatasetLoadError
 from src.core.openapi_examples import TRAIN_EXAMPLES, TUNE_EXAMPLES
 from src.main import app, lifespan
+from src.services.dataset import DatasetProcessor
 from src.services.model_storage import get_model_store, load_churn_model
 from src.services.preprocessing import SplitData, get_split
 
@@ -275,6 +276,26 @@ async def test_train_answers_503_without_dataset(client, model_store):
     assert response.json() == {"code": "dataset_unavailable", "message": "Dataset is not available", "details": None}
     assert model_store.model is None
     assert not model_store.path.exists()
+
+
+async def test_train_answers_503_on_empty_dataset_file(client, model_store, write_csv, monkeypatch, caplog):
+    path = write_csv("")
+
+    def load_dataset() -> DatasetProcessor:
+        processor = DatasetProcessor(path)
+        processor.load()
+        return processor
+
+    # get_split() calls get_dataset() directly rather than through Depends, so it is patched where it is looked up.
+    monkeypatch.setattr("src.services.preprocessing.get_dataset", load_dataset)
+    get_split.cache_clear()
+    with caplog.at_level(logging.WARNING):
+        response = await client.post("/model/train")
+
+    assert response.status_code == 503
+    assert response.json() == {"code": "dataset_unavailable", "message": "Dataset is not available", "details": None}
+    assert str(path) in caplog.text
+    assert model_store.model is None
 
 
 async def test_train_answers_409_on_header_only_dataset(client, serve_csv, csv_header):
