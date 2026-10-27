@@ -6,8 +6,9 @@ billing, usage and support history.
 
 Current state: the API validates customer features, serves the training
 dataset, trains a logistic regression or a random forest on it with the
-requested hyperparameters, keeps the trained model on disk across restarts
-and predicts churn of new customers with it.
+requested hyperparameters, finds the best hyperparameters by grid search,
+keeps the trained model on disk across restarts and predicts churn of new
+customers with it.
 
 ## Endpoints
 
@@ -19,6 +20,7 @@ and predicts churn of new customers with it.
 | GET | `/dataset/info` | row and column counts, feature names, churn class distribution |
 | GET | `/dataset/split-info` | train and test sizes, churn class distribution in each part |
 | POST | `/model/train` | train the churn model of the type and with the hyperparameters from the optional JSON body, save it, return accuracy and churn F1 on the test part |
+| POST | `/model/tune` | score a grid of hyperparameters by cross-validation on the train part, return the best config ready for `/model/train` and the five best combinations; changes no model |
 | GET | `/model/status` | whether a model is trained, when, its type, main hyperparameters and test metrics |
 
 Endpoints that need the dataset answer `503` while it is missing or broken, and `409` with the reason while it
@@ -86,6 +88,10 @@ curl -X POST http://127.0.0.1:8000/model/train
 curl -X POST http://127.0.0.1:8000/model/train \
   -H "Content-Type: application/json" \
   -d '{"model_type": "random_forest", "hyperparameters": {"n_estimators": 300, "max_depth": 5, "class_weight": "balanced"}}'
+curl -X POST http://127.0.0.1:8000/model/tune
+curl -X POST http://127.0.0.1:8000/model/tune \
+  -H "Content-Type: application/json" \
+  -d '{"model_type": "random_forest", "param_grid": {"max_depth": [3, 5, null], "class_weight": ["balanced"]}}'
 curl http://127.0.0.1:8000/model/status
 ```
 
@@ -161,6 +167,57 @@ Without class weights, with 20% churners, the logistic regression almost never p
 to the 0.7975 of always answering "stays" and its F1 is near zero. `"class_weight": "balanced"` weights churners up,
 and the model catches about half of them at the cost of accuracy. A random forest of fully grown trees fits the noise
 of the train part; shallow trees do better, but on this dataset the balanced logistic regression is still ahead.
+
+## Hyperparameter tuning
+
+`POST /model/tune` scores every combination of a grid by cross-validation on the train part and returns the best one
+as `best_config`, the body `POST /model/train` takes, so the tune-then-train loop is two requests:
+
+```bash
+curl -X POST http://127.0.0.1:8000/model/tune \
+  -H "Content-Type: application/json" \
+  -d '{"model_type": "logreg", "param_grid": {"C": [0.1, 1.0], "class_weight": [null, "balanced"]}, "scoring": "f1"}'
+# send best_config from the answer to /model/train as it is
+curl -X POST http://127.0.0.1:8000/model/train \
+  -H "Content-Type: application/json" \
+  -d '{"model_type": "logreg", "hyperparameters": {"C": 0.1, "class_weight": "balanced"}}'
+```
+
+- `param_grid` maps hyperparameter names of `model_type` to lists of values to try. Without it the default grid of
+  the model type is searched: `C` and `class_weight` for `logreg`, `max_depth`, `min_samples_leaf` and
+  `class_weight` for `random_forest`. A body without any field searches the default `logreg` grid.
+- `scoring` is `f1` (of the churn class, the default), `accuracy` or `roc_auc`; `cv` is the number of folds, 2 to 10,
+  5 by default.
+- The test part is not used, and no model is trained or replaced: `/model/train` trains the chosen config.
+- The grid may need at most 200 fits (combinations times folds), as the search runs while the client waits. A bigger
+  grid, an unknown field or `scoring` gets `422` from the schema. A hyperparameter the model does not know, or
+  combinations it refuses, get `422` with the reason:
+
+```json
+{"detail": "Cannot train logreg with 1 of 2 combinations of the grid: {\"C\": 0}; the first one fails with: The 'C' parameter of LogisticRegression must be a float in the range (0.0, inf]. Got 0 instead."}
+```
+
+- A `cv` larger than the number of customers of a churn class in the train part gets `409`.
+
+Answer for the bundled dataset without a body (scores rounded; `candidates` holds five combinations, best first):
+
+```json
+{
+  "best_config": {"model_type": "logreg", "hyperparameters": {"C": 0.1, "class_weight": "balanced"}},
+  "scoring": "f1",
+  "best_score": 0.405,
+  "candidates": [
+    {"hyperparameters": {"C": 0.1, "class_weight": "balanced"}, "mean_score": 0.405, "std_score": 0.0238},
+    {"hyperparameters": {"C": 0.01, "class_weight": "balanced"}, "mean_score": 0.3977, "std_score": 0.0251},
+    "..."
+  ]
+}
+```
+
+`best_score` is the mean over the folds of the train part. `/model/train` with this config gets test F1 0.344, about
+the same as with `C=1`: the scores of different `C` differ by less than their `std_score`, and only `class_weight`
+changes the result. How to read the results and why the metric matters:
+[docs/model_training.md](docs/model_training.md#hyperparameter-tuning).
 
 ## Trained model
 
@@ -258,7 +315,7 @@ Before the first training the endpoint answers `503`:
 Customers that fail validation get `422`. The body is one customer or a list, so the error `loc` names the type it was
 checked against, for example `["body", "FeatureVectorChurn", "region"]`.
 
-How it works: [docs/prediction.md](docs/prediction.md). The models and their hyperparameters:
+How it works: [docs/prediction.md](docs/prediction.md). The models, their hyperparameters and tuning:
 [docs/model_training.md](docs/model_training.md).
 
 ## Tests

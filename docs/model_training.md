@@ -1,8 +1,8 @@
 # Training a churn classifier
 
 Short notes on the two churn models: what they compute, why their features
-are prepared the way they are, how they are configured and how their quality
-is measured.
+are prepared the way they are, how they are configured, how their quality
+is measured and how their hyperparameters are tuned.
 
 ## Logistic regression
 
@@ -131,3 +131,74 @@ is measured.
   without that sklearn answers "The classes, [0, 1], are not in class_weight".
 - Other ways to handle imbalance: moving the decision threshold below 0.5 or
   resampling the train part.
+
+## Hyperparameter tuning
+
+- `POST /model/tune` takes `{"model_type", "param_grid", "scoring", "cv"}`
+  and runs `GridSearchCV`: every combination of the listed values is scored
+  by cross-validation, and the best one comes back as `best_config`, the body
+  `POST /model/train` takes.
+- Cross-validation runs on the train part only. `StratifiedKFold` cuts it
+  into `cv` folds with the same churn share; each combination is fitted on
+  `cv - 1` folds and scored on the remaining one, and the scores are averaged.
+  The test part stays unseen: a combination picked by its test score would
+  make the test metrics a result of the choice rather than an estimate of
+  quality on new customers.
+- The whole pipeline is searched, so gap filling and scaling are refitted
+  inside every fold and the scored fold leaks into nothing. A hyperparameter
+  of a pipeline step is addressed as `<step>__<name>` (`model__C`); the
+  response drops the prefix, so its names are the ones `/model/train` takes.
+- `refit=False`: by default `GridSearchCV` refits the best combination on the
+  whole train part. Here the search only suggests a config, and the client
+  trains it with `/model/train`, which scores it on the test part and saves
+  it. Tuning cannot replace the served model.
+- The classifier and the folds use the fixed `random_state`, so the same
+  request gives the same answer, and the forest scored in the search is the
+  one `/model/train` fits for the same config.
+- The grid grows multiplicatively: 4 values of `C` times 2 of `class_weight`
+  is 8 combinations, 40 fits with 5 folds. The search runs while the client
+  waits, so a request may need at most 200 fits; a forest of 100 trees takes
+  about 0.25 s to fit here, so 200 fits are about a minute.
+- Without `param_grid` the default grid of the model type is searched: `C`
+  and `class_weight` for the logistic regression; `max_depth`,
+  `min_samples_leaf` and `class_weight` for the forest. `n_estimators` stays
+  at its default: more trees make the answer stabler and training slower, but
+  trade no metric off.
+- A combination the model refuses does not stop the search
+  (`error_score=nan`): every refused one is collected and the request answers
+  `422` with their list and the reason of the first one, found by training it
+  again as `/model/train` would. When every fit fails, sklearn raises a
+  `ValueError` whose message holds tracebacks with server paths, so it is not
+  returned.
+
+## Reading tuning results
+
+- On the bundled dataset the default logistic regression grid picks
+  `{"C": 0.1, "class_weight": "balanced"}` with cv F1 0.405 ± 0.024. The other
+  values of `C` with balanced weights score 0.395-0.398: closer than one
+  standard deviation, so they are as good. The choice that matters is
+  `class_weight`: without it F1 drops to 0.09.
+- `/model/train` with that config gets test F1 0.344, below the cv score and
+  about the 0.348 of `C=1`. The best of many noisy scores is usually an
+  overestimate, as luck helped it win, and the test part of 400 rows is noisy
+  too. Treat a difference smaller than `std_score` as noise.
+- The forest grid picks `max_depth=5` with balanced weights: cv F1 0.402,
+  test F1 0.314, still behind the logistic regression.
+- The metric decides what "best" means. ROC-AUC scores how the predicted
+  probabilities rank churners above the others and ignores the 0.5
+  threshold, so class weights barely move it: tuned by `roc_auc`, the best
+  logistic regression has no class weights (cv ROC-AUC 0.669) and test F1
+  0.02. Tune by F1 when the churn label is used, by ROC-AUC when customers are
+  ranked by risk.
+
+## Tuning in production
+
+- Here tuning is a synchronous request, as the dataset fits in memory and a
+  search takes seconds. Production services run it as a separate job: a
+  request starts it and gets a job id, the job runs on its own machines, and
+  its trials go to an experiment tracker such as MLflow. Examples: SageMaker
+  hyperparameter tuning jobs, Katib in Kubeflow, Optuna or Ray Tune in a
+  training pipeline.
+- Grid search is easy to read but spends most fits on poor regions of the
+  grid. Random search and Bayesian optimization (Optuna's TPE) usually find a
+  better config within the same number of fits.
