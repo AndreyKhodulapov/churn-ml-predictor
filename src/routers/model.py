@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends
 
-from src.core.openapi_examples import TRAIN_EXAMPLES, TUNE_EXAMPLES
+from src.core.openapi_examples import TRAIN_EXAMPLES, TRAIN_RESPONSES, TUNE_EXAMPLES, TUNE_RESPONSES
 from src.schemas.learning import ModelStatus, TrainingConfigChurn, TrainMetrics, TuningConfigChurn, TuningResultChurn
 from src.schemas.prediction import FeatureSchemaChurn
 from src.services.model import train_and_save_churn_model, tune_churn_model_on_split
@@ -18,6 +18,7 @@ router = APIRouter(tags=["Model"], prefix="/model")
     "/train",
     summary="Train the churn model and serve it",
     response_description="Accuracy and churn F1 of the new model on the test part",
+    responses=TRAIN_RESPONSES,
 )
 def train_model(
     split: Annotated[SplitData, Depends(get_split)],
@@ -43,6 +44,7 @@ def train_model(
     "/tune",
     summary="Find the best churn model hyperparameters by grid search",
     response_description="The best config, ready to be sent to POST /model/train, and the best combinations",
+    responses=TUNE_RESPONSES,
 )
 def tune_model(
     split: Annotated[SplitData, Depends(get_split)],

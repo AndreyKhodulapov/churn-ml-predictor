@@ -3,11 +3,15 @@ import logging
 import pytest
 
 from src.core.openapi_examples import (
+    EMPTY_BATCH_ERROR,
     LOYAL_CUSTOMER,
     LOYAL_CUSTOMER_PREDICTION,
     MODEL_NOT_TRAINED_ERROR,
+    PREDICTION_FAILED_ERROR,
     RISKY_CUSTOMER,
     RISKY_CUSTOMER_PREDICTION,
+    WRONG_FEATURES_ERROR,
+    WRONG_TYPE_ERROR,
 )
 
 
@@ -38,11 +42,7 @@ async def test_predict_answers_500_when_model_fails(broken_model, customer_featu
     response = await broken_model.post("/predict", json=customer_features)
 
     assert response.status_code == 500
-    assert response.json() == {
-        "code": "prediction_failed",
-        "message": "Churn model failed to make a prediction",
-        "details": None,
-    }
+    assert response.json() == PREDICTION_FAILED_ERROR
 
 
 async def test_predict_logs_the_cause_of_a_model_failure_and_hides_it(broken_model, customer_features, caplog):
@@ -81,17 +81,7 @@ async def test_predict_rejects_empty_list(trained_client):
     response = await trained_client.post("/predict", json=[])
 
     assert response.status_code == 422
-    assert response.json() == {
-        "code": "validation_error",
-        "message": "Request failed validation, see details for every error",
-        "details": [
-            {
-                "loc": ["body", "list[FeatureVectorChurn]"],
-                "message": "List should have at least 1 item after validation, not 0",
-                "type": "too_short",
-            }
-        ],
-    }
+    assert response.json() == EMPTY_BATCH_ERROR
 
 
 async def test_predict_rejects_empty_list_before_looking_for_model(client):
@@ -120,12 +110,38 @@ async def test_openapi_shows_predict_examples(client):
     ]
     response_examples = operation["responses"]["200"]["content"]["application/json"]["examples"]
     assert response_examples["several_customers"]["value"] == [LOYAL_CUSTOMER_PREDICTION, RISKY_CUSTOMER_PREDICTION]
-    # FastAPI drops None values from the whole OpenAPI document, the null details of the example included.
-    assert operation["responses"]["503"]["content"]["application/json"]["example"] == {
-        "code": MODEL_NOT_TRAINED_ERROR["code"],
-        "message": MODEL_NOT_TRAINED_ERROR["message"],
-    }
     assert "Answers `503` until a model is trained" in operation["description"]
+
+
+async def test_openapi_shows_predict_errors(documented_errors):
+    assert documented_errors("post", "/predict", 422) == {
+        "wrong_type": WRONG_TYPE_ERROR,
+        "wrong_features": WRONG_FEATURES_ERROR,
+        "empty_batch": EMPTY_BATCH_ERROR,
+    }
+    assert documented_errors("post", "/predict", 500) == {"prediction_failed": PREDICTION_FAILED_ERROR}
+    assert documented_errors("post", "/predict", 503) == {"model_not_trained": MODEL_NOT_TRAINED_ERROR}
+
+
+@pytest.mark.parametrize(
+    ("body", "error"),
+    [
+        ({**LOYAL_CUSTOMER, "monthly_fee": "abc"}, WRONG_TYPE_ERROR),
+        (
+            [
+                LOYAL_CUSTOMER,
+                {**{k: v for k, v in RISKY_CUSTOMER.items() if k != "autopay_enabled"}, "contract_type": "annual"},
+            ],
+            WRONG_FEATURES_ERROR,
+        ),
+        ([], EMPTY_BATCH_ERROR),
+    ],
+)
+async def test_predict_answers_documented_validation_errors(trained_client, body, error):
+    response = await trained_client.post("/predict", json=body)
+
+    assert response.status_code == 422
+    assert response.json() == error
 
 
 async def test_openapi_response_examples_match_the_model_trained_on_bundled_dataset(trained_client):

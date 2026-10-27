@@ -4,6 +4,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from src.core.exceptions import DatasetLoadError, DatasetNotTrainableError
+from src.core.openapi_examples import DATASET_UNAVAILABLE_ERROR, INVALID_N_ERROR, NO_LABELED_ROWS_ERROR
 from src.main import app, lifespan
 from src.services.dataset import get_dataset
 
@@ -65,17 +66,7 @@ async def test_validation_error_lists_every_invalid_value(client):
     response = await client.get("/dataset/preview", params={"n": 0})
 
     assert response.status_code == 422
-    assert response.json() == {
-        "code": "validation_error",
-        "message": "Request failed validation, see details for every error",
-        "details": [
-            {
-                "loc": ["query", "n"],
-                "message": "Input should be greater than or equal to 1",
-                "type": "greater_than_equal",
-            }
-        ],
-    }
+    assert response.json() == INVALID_N_ERROR
 
 
 async def test_validation_error_does_not_echo_the_input(client, customer_features):
@@ -102,7 +93,7 @@ async def test_unavailable_dataset_returns_json_503(make_failing_client, caplog)
         response = await client.get("/dataset/info")
 
     assert response.status_code == 503
-    assert response.json() == {"code": "dataset_unavailable", "message": "Dataset is not available", "details": None}
+    assert response.json() == DATASET_UNAVAILABLE_ERROR
     assert "/secret/path.csv" in caplog.text
 
 
@@ -112,6 +103,26 @@ async def test_unavailable_dataset_hides_file_path(make_failing_client):
     response = await client.get("/dataset/preview")
 
     assert "/secret/path.csv" not in response.text
+
+
+async def test_openapi_shows_dataset_errors(documented_errors):
+    assert documented_errors("get", "/dataset/preview", 422) == {"invalid_n": INVALID_N_ERROR}
+    for path in ["/dataset/preview", "/dataset/info", "/dataset/split-info"]:
+        assert documented_errors("get", path, 503) == {"dataset_unavailable": DATASET_UNAVAILABLE_ERROR}
+    assert documented_errors("get", "/dataset/split-info", 409) == {"no_labeled_rows": NO_LABELED_ROWS_ERROR}
+
+
+async def test_openapi_documents_no_validation_error_schema_of_fastapi(client):
+    # FastAPI documents its own 422 body on every operation with parameters unless the operation sets 422 itself.
+    schema = (await client.get("/openapi.json")).json()
+
+    assert "HTTPValidationError" not in schema["components"]["schemas"]
+    for path, operations in schema["paths"].items():
+        for method, operation in operations.items():
+            if "422" in operation["responses"]:
+                assert operation["responses"]["422"]["content"]["application/json"]["schema"] == {
+                    "$ref": "#/components/schemas/ErrorResponse"
+                }, f"{method} {path}"
 
 
 async def test_startup_survives_unavailable_dataset(monkeypatch, caplog):

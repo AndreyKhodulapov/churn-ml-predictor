@@ -109,9 +109,10 @@ in `/docs`.
   the operation in Swagger UI.
 - `Body(openapi_examples=...)` adds named request examples that Swagger UI
   offers in a dropdown and fills into "Try it out".
-- `responses={200: ..., 503: ...}` adds response examples and documents the
-  error status; the 200 schema itself is still generated from the return
-  type `list[PredictionResponseChurn]`.
+- `responses={200: ..., 422: ..., 500: ..., 503: ...}` adds response
+  examples and documents the error statuses with the `ErrorResponse` schema;
+  the 200 schema itself is still generated from the return type
+  `list[PredictionResponseChurn]`. See [error_handling.md](error_handling.md).
 - `Field(examples=[...])` on schema fields shows sample values in the schema
   section.
 - The examples live in `src/core/openapi_examples.py` and are reused by the

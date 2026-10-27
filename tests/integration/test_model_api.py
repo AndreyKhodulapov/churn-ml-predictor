@@ -9,7 +9,17 @@ from sklearn.linear_model import LogisticRegression
 
 from src.core.constants import FEATURES, MAX_TUNING_FITS
 from src.core.exceptions import DatasetLoadError
-from src.core.openapi_examples import TRAIN_EXAMPLES, TUNE_EXAMPLES
+from src.core.openapi_examples import (
+    CV_TOO_LARGE_ERROR,
+    DATASET_UNAVAILABLE_ERROR,
+    INVALID_C_ERROR,
+    NO_LABELED_ROWS_ERROR,
+    TOO_MANY_FITS_ERROR,
+    TRAIN_EXAMPLES,
+    TUNE_EXAMPLES,
+    UNKNOWN_HYPERPARAMETER_ERROR,
+    UNKNOWN_MODEL_TYPE_ERROR,
+)
 from src.main import app, lifespan
 from src.services.dataset import DatasetProcessor
 from src.services.model_storage import get_model_store, load_churn_model
@@ -257,6 +267,32 @@ async def test_train_answers_422_on_hyperparameters_the_model_refuses(client, mo
     assert load_churn_model(model_store.path).trained_at == trained.trained_at
 
 
+async def test_openapi_shows_train_errors(documented_errors):
+    assert documented_errors("post", "/model/train", 409) == {"no_labeled_rows": NO_LABELED_ROWS_ERROR}
+    assert documented_errors("post", "/model/train", 422) == {
+        "unknown_model_type": UNKNOWN_MODEL_TYPE_ERROR,
+        "invalid_hyperparameter": INVALID_C_ERROR,
+        "unknown_hyperparameter": UNKNOWN_HYPERPARAMETER_ERROR,
+    }
+    assert documented_errors("post", "/model/train", 503) == {"dataset_unavailable": DATASET_UNAVAILABLE_ERROR}
+
+
+@pytest.mark.parametrize(
+    ("config", "error"),
+    [
+        ({"model_type": "xgboost"}, UNKNOWN_MODEL_TYPE_ERROR),
+        ({"hyperparameters": {"C": 0}}, INVALID_C_ERROR),
+        ({"hyperparameters": {"n_estimators": 10}}, UNKNOWN_HYPERPARAMETER_ERROR),
+    ],
+)
+async def test_train_answers_documented_422_errors(client, model_store, config, error):
+    response = await client.post("/model/train", json=config)
+
+    assert response.status_code == 422
+    assert response.json() == error
+    assert model_store.model is None
+
+
 async def test_train_fits_and_scores_served_split(client, separable_split):
     response = await client.post("/model/train")
 
@@ -273,7 +309,7 @@ async def test_train_answers_503_without_dataset(client, model_store):
     app.dependency_overrides.clear()
 
     assert response.status_code == 503
-    assert response.json() == {"code": "dataset_unavailable", "message": "Dataset is not available", "details": None}
+    assert response.json() == DATASET_UNAVAILABLE_ERROR
     assert model_store.model is None
     assert not model_store.path.exists()
 
@@ -293,7 +329,7 @@ async def test_train_answers_503_on_empty_dataset_file(client, model_store, writ
         response = await client.post("/model/train")
 
     assert response.status_code == 503
-    assert response.json() == {"code": "dataset_unavailable", "message": "Dataset is not available", "details": None}
+    assert response.json() == DATASET_UNAVAILABLE_ERROR
     assert str(path) in caplog.text
     assert model_store.model is None
 
@@ -304,11 +340,7 @@ async def test_train_answers_409_on_header_only_dataset(client, serve_csv, csv_h
     response = await client.post("/model/train")
 
     assert response.status_code == 409
-    assert response.json() == {
-        "code": "dataset_not_trainable",
-        "message": "Dataset cannot be used for training: Dataset has no labeled rows",
-        "details": None,
-    }
+    assert response.json() == NO_LABELED_ROWS_ERROR
 
 
 async def test_train_answers_409_on_single_class_dataset(client, serve_csv, csv_header, make_csv_row):
@@ -500,16 +532,37 @@ async def test_tune_answers_422_on_hyperparameters_the_model_refuses(client, tun
     assert response.json()["message"].startswith(message)
 
 
+async def test_openapi_shows_tune_errors(documented_errors):
+    assert documented_errors("post", "/model/tune", 409) == {
+        "no_labeled_rows": NO_LABELED_ROWS_ERROR,
+        "cv_too_large": CV_TOO_LARGE_ERROR,
+    }
+    assert documented_errors("post", "/model/tune", 422) == {
+        "too_many_fits": TOO_MANY_FITS_ERROR,
+        "unknown_hyperparameter": UNKNOWN_HYPERPARAMETER_ERROR,
+    }
+    assert documented_errors("post", "/model/tune", 503) == {"dataset_unavailable": DATASET_UNAVAILABLE_ERROR}
+
+
+@pytest.mark.parametrize(
+    ("config", "error"),
+    [
+        ({"param_grid": {"C": list(range(1, 50))}}, TOO_MANY_FITS_ERROR),
+        ({"param_grid": {"n_estimators": [10]}}, UNKNOWN_HYPERPARAMETER_ERROR),
+    ],
+)
+async def test_tune_answers_documented_422_errors(client, config, error):
+    response = await client.post("/model/tune", json=config)
+
+    assert response.status_code == 422
+    assert response.json() == error
+
+
 async def test_tune_answers_409_when_a_class_is_smaller_than_cv(client, separable_split):
     response = await client.post("/model/tune", json={"cv": 5})
 
     assert response.status_code == 409
-    assert response.json() == {
-        "code": "dataset_not_trainable",
-        "message": "Dataset cannot be used for training: 5-fold cross-validation needs at least 5 customers "
-        "of each churn class in the train part, the rarest class has 4",
-        "details": None,
-    }
+    assert response.json() == CV_TOO_LARGE_ERROR
 
 
 async def test_tune_answers_503_without_dataset(client):
@@ -521,7 +574,7 @@ async def test_tune_answers_503_without_dataset(client):
     app.dependency_overrides.clear()
 
     assert response.status_code == 503
-    assert response.json() == {"code": "dataset_unavailable", "message": "Dataset is not available", "details": None}
+    assert response.json() == DATASET_UNAVAILABLE_ERROR
 
 
 async def test_openapi_shows_optional_tune_config_with_examples(client):

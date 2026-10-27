@@ -31,6 +31,7 @@ def predict(
     A model trained with the hyperparameter `"class_weight": "balanced"` overstates `probability_churn`: read it as a
     risk score to rank customers by rather than as the real chance of leaving.
 
-    Answers `503` until a model is trained with `POST /model/train`.
+    Answers `503` until a model is trained with `POST /model/train`, `422` when a customer fails validation or the list
+    is empty and `500` when the model fails to predict for valid customers.
     """
     return predict_churn(store.model, features)
