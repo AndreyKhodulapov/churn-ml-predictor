@@ -64,6 +64,11 @@ async def test_openapi_shows_predict_examples(client):
     examples = operation["requestBody"]["content"]["application/json"]["examples"]
     assert examples["one_customer"]["value"] == LOYAL_CUSTOMER
     assert examples["several_customers"]["value"] == [LOYAL_CUSTOMER, RISKY_CUSTOMER]
+    # Picking the branch by the shape of the body leaves the schema a choice of one customer or a list.
+    assert operation["requestBody"]["content"]["application/json"]["schema"]["oneOf"] == [
+        {"$ref": "#/components/schemas/FeatureVectorChurn"},
+        {"type": "array", "items": {"$ref": "#/components/schemas/FeatureVectorChurn"}},
+    ]
     response_examples = operation["responses"]["200"]["content"]["application/json"]["examples"]
     assert response_examples["several_customers"]["value"] == [LOYAL_CUSTOMER_PREDICTION, RISKY_CUSTOMER_PREDICTION]
     # FastAPI drops None values from the whole OpenAPI document, the null details of the example included.

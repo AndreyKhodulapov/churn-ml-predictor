@@ -61,6 +61,40 @@ async def test_wrong_method_returns_json_405_with_allowed_methods(client):
     assert response.headers["allow"] == "POST"
 
 
+async def test_validation_error_lists_every_invalid_value(client):
+    response = await client.get("/dataset/preview", params={"n": 0})
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "code": "validation_error",
+        "message": "Request failed validation, see details for every error",
+        "details": [
+            {
+                "loc": ["query", "n"],
+                "message": "Input should be greater than or equal to 1",
+                "type": "greater_than_equal",
+            }
+        ],
+    }
+
+
+async def test_validation_error_does_not_echo_the_input(client, customer_features):
+    customer_features["region"] = "antarctica"
+
+    response = await client.post("/predict", json=customer_features)
+
+    assert response.status_code == 422
+    assert "antarctica" not in response.text
+
+
+async def test_invalid_json_returns_validation_error(client):
+    response = await client.post("/predict", content=b"{bad", headers={"Content-Type": "application/json"})
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "validation_error"
+    assert response.json()["details"][0]["type"] == "json_invalid"
+
+
 async def test_unavailable_dataset_returns_json_503(make_failing_client, caplog):
     client = await make_failing_client(DatasetLoadError("Dataset file not found: /secret/path.csv"))
 

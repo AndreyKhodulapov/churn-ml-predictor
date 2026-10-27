@@ -1,6 +1,6 @@
-from typing import Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import Field
+from pydantic import Discriminator, Field, Tag
 
 from src.core.constants import DeviceType, PaymentMethod, Region
 from src.schemas.base import BaseSchema
@@ -18,6 +18,21 @@ class FeatureVectorChurn(BaseSchema):
     device_type: DeviceType
     payment_method: PaymentMethod
     autopay_enabled: Literal[0, 1]
+
+
+def body_shape(body: Any) -> str:
+    """Branch of PredictionRequestChurn to check the body against: a list is a batch, anything else one customer."""
+    return "list[FeatureVectorChurn]" if isinstance(body, list) else "FeatureVectorChurn"
+
+
+# A /predict body: one customer or a list of them. The branch is picked by the shape of the body, so a body that fails
+# validation gets the errors of that branch only rather than of both. The tags are the names pydantic gives the
+# branches of a plain union, and the loc of every error starts with the tag of its branch.
+PredictionRequestChurn = Annotated[
+    Annotated[FeatureVectorChurn, Tag("FeatureVectorChurn")]
+    | Annotated[list[FeatureVectorChurn], Tag("list[FeatureVectorChurn]")],
+    Discriminator(body_shape),
+]
 
 
 class PredictionResponseChurn(BaseSchema):

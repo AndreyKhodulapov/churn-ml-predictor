@@ -55,7 +55,7 @@ async def test_preview_rejects_invalid_n(client, n):
     response = await client.get("/dataset/preview", params={"n": n})
 
     assert response.status_code == 422
-    assert response.json()["detail"][0]["loc"] == ["query", "n"]
+    assert response.json()["details"][0]["loc"] == ["query", "n"]
 
 
 async def test_info_describes_default_dataset(client):

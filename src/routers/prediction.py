@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends
 
 from src.core.openapi_examples import PREDICT_EXAMPLES, PREDICT_RESPONSES
-from src.schemas.prediction import FeatureVectorChurn, PredictionResponseChurn
+from src.schemas.prediction import PredictionRequestChurn, PredictionResponseChurn
 from src.services.model_storage import ChurnModelStore, get_model_store
 from src.services.prediction import predict_churn
 
@@ -19,7 +19,7 @@ router = APIRouter(tags=["Prediction"])
     responses=PREDICT_RESPONSES,
 )
 def predict(
-    features: Annotated[FeatureVectorChurn | list[FeatureVectorChurn], Body(openapi_examples=PREDICT_EXAMPLES)],
+    features: Annotated[PredictionRequestChurn, Body(openapi_examples=PREDICT_EXAMPLES)],
     store: Annotated[ChurnModelStore, Depends(get_model_store)],
 ) -> list[PredictionResponseChurn]:
     """Predict whether each customer leaves the service next month.

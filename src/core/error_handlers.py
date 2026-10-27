@@ -4,6 +4,7 @@ from http import HTTPStatus
 from typing import Any
 
 from fastapi import Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
@@ -13,7 +14,7 @@ from src.core.exceptions import (
     InvalidHyperparametersError,
     ModelNotTrainedError,
 )
-from src.schemas.errors import ErrorResponse
+from src.schemas.errors import ErrorResponse, ValidationErrorDetail
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,16 @@ async def http_error_handler(request: Request, exc: HTTPException) -> JSONRespon
     if isinstance(exc.detail, str):
         return error_response(exc.status_code, code, exc.detail, headers=exc.headers)
     return error_response(exc.status_code, code, phrase, exc.detail, exc.headers)
+
+
+async def request_validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    # FastAPI would answer with the pydantic errors as they are. They echo the invalid input, which may be a whole
+    # batch of customers, and ctx repeats what the message says, so only where, what and which check are kept.
+    details = [
+        ValidationErrorDetail(loc=list(error["loc"]), message=error["msg"], type=error["type"]).model_dump()
+        for error in exc.errors()
+    ]
+    return error_response(422, "validation_error", "Request failed validation, see details for every error", details)
 
 
 async def dataset_unavailable_handler(request: Request, exc: DatasetLoadError) -> JSONResponse:

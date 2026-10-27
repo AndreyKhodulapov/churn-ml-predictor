@@ -5,6 +5,16 @@ from pydantic import Field
 from src.schemas.base import BaseSchema
 
 
+class ValidationErrorDetail(BaseSchema):
+    """One value of a request that failed validation, an item of the details of a validation_error."""
+
+    # Where the value is: the part of the request (body, query, path) and the keys and indexes down to it.
+    loc: list[str | int] = Field(examples=[["body", "FeatureVectorChurn", "region"]])
+    message: str = Field(examples=["Input should be 'europe', 'asia', 'america' or 'africa'"])
+    # pydantic error type, stable across messages, like missing or literal_error.
+    type: str = Field(examples=["literal_error"])
+
+
 class ErrorResponse(BaseSchema):
     """Body of every error answer of the service, whatever the status."""
 

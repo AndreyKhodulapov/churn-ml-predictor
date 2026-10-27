@@ -337,8 +337,22 @@ Before the first training the endpoint answers `503`:
 {"code": "model_not_trained", "message": "Churn model is not trained yet, call POST /model/train first", "details": null}
 ```
 
-Customers that fail validation get `422`. The body is one customer or a list, so the error `loc` names the type it was
-checked against, for example `["body", "FeatureVectorChurn", "region"]`.
+Customers that fail validation get `422` with the code `validation_error` and one item in `details` per invalid
+value. The body is checked as a list when it is one and as one customer otherwise, so `loc` starts with the type it
+was checked against, followed by the index of the customer in a list:
+
+```json
+{
+  "code": "validation_error",
+  "message": "Request failed validation, see details for every error",
+  "details": [
+    {"loc": ["body", "list[FeatureVectorChurn]", 1, "region"],
+     "message": "Input should be 'europe', 'asia', 'america' or 'africa'", "type": "literal_error"}
+  ]
+}
+```
+
+The invalid value itself is not repeated in the answer.
 
 How it works: [docs/prediction.md](docs/prediction.md). The models, their hyperparameters and tuning:
 [docs/model_training.md](docs/model_training.md).

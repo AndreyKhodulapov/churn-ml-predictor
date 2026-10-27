@@ -218,7 +218,7 @@ async def test_train_rejects_invalid_config(client, model_store, config, loc):
     response = await client.post("/model/train", json=config)
 
     assert response.status_code == 422
-    assert response.json()["detail"][0]["loc"] == loc
+    assert response.json()["details"][0]["loc"] == loc
     assert model_store.model is None
 
 
@@ -458,7 +458,7 @@ async def test_tune_rejects_invalid_config(client, config, loc):
     response = await client.post("/model/tune", json=config)
 
     assert response.status_code == 422
-    assert response.json()["detail"][0]["loc"] == loc
+    assert response.json()["details"][0]["loc"] == loc
 
 
 @pytest.mark.parametrize(

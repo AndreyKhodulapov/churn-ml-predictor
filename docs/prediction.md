@@ -55,9 +55,16 @@ in `/docs`.
   pipeline transforms all rows at once instead of once per request.
 - The answer is always a list, one prediction per customer in the order they
   were sent, so a client reads it the same way in both cases.
-- Pydantic checks the body against both types of the union, so a 422 lists an
-  error for each of them, and `loc` names the type
-  (`["body", "FeatureVectorChurn", "region"]`).
+- A plain union is checked against both types, so a 422 would list an error
+  for each of them: a customer with a bad `region` also gets "Input should be
+  a valid list". A callable `Discriminator` picks the type by the shape of the
+  body instead (a list is a batch, anything else one customer), and only that
+  type is checked.
+- `loc` names the checked type by its `Tag`, then the index of the customer in
+  a batch: `["body", "FeatureVectorChurn", "region"]` or
+  `["body", "list[FeatureVectorChurn]", 1, "region"]`. The tags repeat the
+  names pydantic gives the types of a plain union, so the locations stay the
+  same.
 
 ## No trained model
 
