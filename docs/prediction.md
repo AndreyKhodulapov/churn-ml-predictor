@@ -10,15 +10,38 @@ in `/docs`.
   scikit-learn knows nothing about Pydantic: it calls `np.asarray()` on its
   input. A single object becomes a 0-d array ("Expected 2D array, got scalar
   array"), a list of them a 1-d array of objects.
-- The pipeline was fitted on a `pd.DataFrame`, and its `ColumnTransformer`
-  steps pick columns by name. So the input is rebuilt the same way:
-  `pd.DataFrame([customer.model_dump() for customer in customers])`, one row
-  per customer and one column per feature. Column order does not matter, the
-  names do.
+- A field outside `FeatureVectorChurn` gets `422` (`extra="forbid"`).
+  Pydantic drops unknown fields by default, so a client sending, say,
+  `contract_type` or the `churn` label of a dataset row would get a
+  prediction and believe the model took that field into account.
+- A float feature has to be finite (`allow_inf_nan=False`). `1e400` is valid
+  JSON, but it does not fit a float and is read as infinity, and Python also
+  accepts the non-standard `Infinity` and `NaN`. Infinity passes `ge=0` and
+  makes scikit-learn fail with a `500`, while `NaN` fails `ge=0` with a
+  misleading reason. Both get `422` with `finite_number` instead.
+- The pipeline was fitted on a `pd.DataFrame`, so the input is rebuilt the
+  same way: one row per customer and one column per feature.
+- The columns are taken from `pipeline.feature_names_in_`, which `fit()`
+  remembers from the train part: the input has exactly the features of the
+  served model, in the same order. The order of the `FeatureVectorChurn`
+  fields differs (`autopay_enabled` is last there), and it does not leak in.
+- The `ColumnTransformer` steps pick columns by name and are lenient: they
+  accept another order, ignore an extra column, and a column missing from
+  `pd.DataFrame(rows, columns=...)` would arrive as `NaN` and be filled like a
+  gap. So the service compares the features of the model with the fields of
+  `FeatureVectorChurn` itself and refuses to predict with a model trained on
+  other features (`ModelFeaturesMismatchError`, answered as a failed
+  prediction, see below). Such a model is already refused when it is loaded
+  from disk, so here the check guards against training features that have
+  drifted from `FeatureVectorChurn`.
 - The fitted pipeline fills gaps, scales and encodes the row itself, so the
   endpoint passes raw features and cannot drift from what training did.
-- An empty list is answered with an empty list before reaching the model:
-  scikit-learn refuses a DataFrame with no rows.
+- An empty list gets `422` (`min_length=1` on the list branch of the body,
+  `minItems` in OpenAPI). It is most likely a client bug, like a filter that
+  matched no customers, and an empty answer would hide it. The validation runs
+  before the endpoint, so the answer is the same with no trained model.
+  `predict_churn()` itself still answers no customers with no predictions:
+  scikit-learn would refuse a DataFrame with no rows.
 
 ## predict and predict_proba
 
@@ -48,9 +71,29 @@ in `/docs`.
   pipeline transforms all rows at once instead of once per request.
 - The answer is always a list, one prediction per customer in the order they
   were sent, so a client reads it the same way in both cases.
-- Pydantic checks the body against both types of the union, so a 422 lists an
-  error for each of them, and `loc` names the type
-  (`["body", "FeatureVectorChurn", "region"]`).
+- A plain union is checked against both types, so a 422 would list an error
+  for each of them: a customer with a bad `region` also gets "Input should be
+  a valid list". A callable `Discriminator` picks the type by the shape of the
+  body instead (a list is a batch, anything else one customer), and only that
+  type is checked.
+- `loc` names the checked type by its `Tag`, then the index of the customer in
+  a batch: `["body", "FeatureVectorChurn", "region"]` or
+  `["body", "list[FeatureVectorChurn]", 1, "region"]`. The tags repeat the
+  names pydantic gives the types of a plain union, so the locations stay the
+  same.
+
+## The model fails to predict
+
+- A request that reaches the model has passed validation, so whatever the
+  pipeline raises (`build_model_input`, `predict`, `predict_proba`) is a fault
+  of the service. `predict_churn()` wraps it in `PredictionError`, and its
+  handler answers `500` with `code: prediction_failed`.
+- The answer carries a generic message only. The cause names model internals,
+  like the features it was trained on, so it goes to the log with the
+  traceback. A handled exception is not re-raised to the server log the way
+  an unhandled one is, so the handler logs it itself.
+- `prediction_failed` rather than the generic `internal_error`: the client
+  learns that the request was fine and the model is at fault.
 
 ## No trained model
 
@@ -66,9 +109,10 @@ in `/docs`.
   the operation in Swagger UI.
 - `Body(openapi_examples=...)` adds named request examples that Swagger UI
   offers in a dropdown and fills into "Try it out".
-- `responses={200: ..., 503: ...}` adds response examples and documents the
-  error status; the 200 schema itself is still generated from the return
-  type `list[PredictionResponseChurn]`.
+- `responses={200: ..., 422: ..., 500: ..., 503: ...}` adds response
+  examples and documents the error statuses with the `ErrorResponse` schema;
+  the 200 schema itself is still generated from the return type
+  `list[PredictionResponseChurn]`. See [error_handling.md](error_handling.md).
 - `Field(examples=[...])` on schema fields shows sample values in the schema
   section.
 - The examples live in `src/core/openapi_examples.py` and are reused by the

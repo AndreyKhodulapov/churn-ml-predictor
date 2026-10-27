@@ -26,6 +26,21 @@ async def client():
 
 
 @pytest.fixture
+async def documented_errors(client):
+    """Error answers an operation shows in /docs, by example name, for a method, a path and a status."""
+    paths = (await client.get("/openapi.json")).json()["paths"]
+
+    def examples(method: str, path: str, status: int) -> dict[str, dict]:
+        content = paths[path][method]["responses"][str(status)]["content"]["application/json"]
+        assert content["schema"] == {"$ref": "#/components/schemas/ErrorResponse"}
+        # FastAPI drops None values from the whole OpenAPI document; null is the default of details, so it is put back
+        # to compare the examples with real answers.
+        return {name: {"details": None, **example["value"]} for name, example in content["examples"].items()}
+
+    return examples
+
+
+@pytest.fixture
 def serve_csv(write_csv, monkeypatch):
     """Serve a dataset written from CSV text to every endpoint, the cached split included."""
 

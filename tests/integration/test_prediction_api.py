@@ -1,11 +1,17 @@
+import logging
+
 import pytest
 
-from src.core.constants import MODEL_NOT_TRAINED_DETAIL
 from src.core.openapi_examples import (
+    EMPTY_BATCH_ERROR,
     LOYAL_CUSTOMER,
     LOYAL_CUSTOMER_PREDICTION,
+    MODEL_NOT_TRAINED_ERROR,
+    PREDICTION_FAILED_ERROR,
     RISKY_CUSTOMER,
     RISKY_CUSTOMER_PREDICTION,
+    WRONG_FEATURES_ERROR,
+    WRONG_TYPE_ERROR,
 )
 
 
@@ -20,7 +26,34 @@ async def test_predict_answers_503_without_trained_model(client, customer_featur
     response = await client.post("/predict", json=customer_features)
 
     assert response.status_code == 503
-    assert response.json() == {"detail": MODEL_NOT_TRAINED_DETAIL}
+    assert response.json() == MODEL_NOT_TRAINED_ERROR
+
+
+@pytest.fixture
+def broken_model(trained_client, model_store, monkeypatch):
+    def broken_predict_proba(X):
+        raise ValueError("Model internals in /secret/model.joblib")
+
+    monkeypatch.setattr(model_store.model.pipeline, "predict_proba", broken_predict_proba)
+    return trained_client
+
+
+async def test_predict_answers_500_when_model_fails(broken_model, customer_features):
+    response = await broken_model.post("/predict", json=customer_features)
+
+    assert response.status_code == 500
+    assert response.json() == PREDICTION_FAILED_ERROR
+
+
+async def test_predict_logs_the_cause_of_a_model_failure_and_hides_it(broken_model, customer_features, caplog):
+    with caplog.at_level(logging.ERROR):
+        response = await broken_model.post("/predict", json=customer_features)
+
+    assert "/secret/model.joblib" not in response.text
+    assert "Traceback" not in response.text
+    assert "Churn model failed to predict, batch size 1: Model internals in /secret/model.joblib" in caplog.text
+    # The traceback reaches the log, down to the exception the pipeline raised.
+    assert "ValueError" in caplog.text
 
 
 async def test_predict_one_customer_returns_one_prediction(trained_client, customer_features):
@@ -44,11 +77,17 @@ async def test_predict_several_customers_keeps_their_order(trained_client):
     assert risky["probability_churn"] > loyal["probability_churn"]
 
 
-async def test_predict_empty_list_returns_no_predictions(trained_client):
+async def test_predict_rejects_empty_list(trained_client):
     response = await trained_client.post("/predict", json=[])
 
-    assert response.status_code == 200
-    assert response.json() == []
+    assert response.status_code == 422
+    assert response.json() == EMPTY_BATCH_ERROR
+
+
+async def test_predict_rejects_empty_list_before_looking_for_model(client):
+    response = await client.post("/predict", json=[])
+
+    assert response.status_code == 422
 
 
 async def test_predict_rejects_invalid_customer_in_list(trained_client):
@@ -64,12 +103,45 @@ async def test_openapi_shows_predict_examples(client):
     examples = operation["requestBody"]["content"]["application/json"]["examples"]
     assert examples["one_customer"]["value"] == LOYAL_CUSTOMER
     assert examples["several_customers"]["value"] == [LOYAL_CUSTOMER, RISKY_CUSTOMER]
+    # Picking the branch by the shape of the body leaves the schema a choice of one customer or a non-empty list.
+    assert operation["requestBody"]["content"]["application/json"]["schema"]["oneOf"] == [
+        {"$ref": "#/components/schemas/FeatureVectorChurn"},
+        {"type": "array", "items": {"$ref": "#/components/schemas/FeatureVectorChurn"}, "minItems": 1},
+    ]
     response_examples = operation["responses"]["200"]["content"]["application/json"]["examples"]
     assert response_examples["several_customers"]["value"] == [LOYAL_CUSTOMER_PREDICTION, RISKY_CUSTOMER_PREDICTION]
-    assert operation["responses"]["503"]["content"]["application/json"]["example"] == {
-        "detail": MODEL_NOT_TRAINED_DETAIL
-    }
     assert "Answers `503` until a model is trained" in operation["description"]
+
+
+async def test_openapi_shows_predict_errors(documented_errors):
+    assert documented_errors("post", "/predict", 422) == {
+        "wrong_type": WRONG_TYPE_ERROR,
+        "wrong_features": WRONG_FEATURES_ERROR,
+        "empty_batch": EMPTY_BATCH_ERROR,
+    }
+    assert documented_errors("post", "/predict", 500) == {"prediction_failed": PREDICTION_FAILED_ERROR}
+    assert documented_errors("post", "/predict", 503) == {"model_not_trained": MODEL_NOT_TRAINED_ERROR}
+
+
+@pytest.mark.parametrize(
+    ("body", "error"),
+    [
+        ({**LOYAL_CUSTOMER, "monthly_fee": "abc"}, WRONG_TYPE_ERROR),
+        (
+            [
+                LOYAL_CUSTOMER,
+                {**{k: v for k, v in RISKY_CUSTOMER.items() if k != "autopay_enabled"}, "contract_type": "annual"},
+            ],
+            WRONG_FEATURES_ERROR,
+        ),
+        ([], EMPTY_BATCH_ERROR),
+    ],
+)
+async def test_predict_answers_documented_validation_errors(trained_client, body, error):
+    response = await trained_client.post("/predict", json=body)
+
+    assert response.status_code == 422
+    assert response.json() == error
 
 
 async def test_openapi_response_examples_match_the_model_trained_on_bundled_dataset(trained_client):

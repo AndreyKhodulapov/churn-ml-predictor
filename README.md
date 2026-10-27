@@ -22,16 +22,18 @@ customers with it.
 | POST | `/model/train` | train the churn model of the type and with the hyperparameters from the optional JSON body, save it, return accuracy and churn F1 on the test part |
 | POST | `/model/tune` | score a grid of hyperparameters by cross-validation on the train part, return the best config ready for `/model/train` and the five best combinations; changes no model |
 | GET | `/model/status` | whether a model is trained, when, its type, main hyperparameters and test metrics |
+| GET | `/model/schema` | features `/predict` expects, in the training order: how the model treats each one, its type and accepted values |
 
 Endpoints that need the dataset answer `503` while it is missing or broken, and `409` with the reason while it
 cannot be split and trained on (no labeled rows, a single churn class, too few rows); the service itself keeps running.
+Every error has the same JSON body, see [Errors](#errors).
 
 ## Features
 
 | Field | Type | Values |
 |-------|------|--------|
-| `monthly_fee` | float | >= 0 |
-| `usage_hours` | float | >= 0, hours used last month |
+| `monthly_fee` | float | >= 0, finite |
+| `usage_hours` | float | >= 0, finite, hours used last month |
 | `support_requests` | int | >= 0 |
 | `account_age_months` | int | >= 0 |
 | `failed_payments` | int | >= 0 |
@@ -40,13 +42,30 @@ cannot be split and trained on (no labeled rows, a single churn class, too few r
 | `payment_method` | str | `card`, `paypal`, `crypto` |
 | `autopay_enabled` | int | `0` or `1` |
 
-A training dataset row has the same fields plus the `churn` label (`0` or `1`).
+A training dataset row has the same fields plus the `churn` label (`0` or `1`). A `/predict` customer with a field
+that is not in this table, `churn` included, gets `422`, so a client never believes the model uses a field it ignores.
+
+`GET /model/schema` returns the same table for a client to build requests from. The features come in the order the
+model is trained on them, each with its `kind` (`numeric`, `binary` or `categorical`), JSON Schema `type`,
+`allowed_values` and `minimum`; it answers before the first training too.
+
+```json
+{"features": [
+  {"name": "monthly_fee", "kind": "numeric", "type": "number", "allowed_values": null, "minimum": 0},
+  ...
+  {"name": "autopay_enabled", "kind": "binary", "type": "integer", "allowed_values": [0, 1], "minimum": null},
+  {"name": "region", "kind": "categorical", "type": "string", "allowed_values": ["europe", "asia", "america", "africa"], "minimum": null},
+  ...
+]}
+```
 
 ## Dataset
 
 The training data lives in `data/churn_dataset.csv`. It is loaded and
-validated once at startup: if the file is missing or a row does not match the
-schema, the service fails to start and logs the reason.
+validated once at startup. If the file is missing, empty or a row does not
+match the schema, the service still starts and logs the reason; the endpoints
+that need the dataset answer `503` with `dataset_unavailable` and retry the load
+on every request until the file is fixed.
 
 At startup the dataset is also prepared for training: rows without a `churn`
 label are dropped, the features are split 80/20 into train and test with the
@@ -147,7 +166,7 @@ and its shares, taken over all rows, sum to less than 1 when such rows exist.
   the model does not know, a value it refuses or a combination it forbids gets `422` with the reason:
 
 ```json
-{"detail": "Cannot train logreg with these hyperparameters: The 'C' parameter of LogisticRegression must be a float in the range (0.0, inf]. Got 0 instead."}
+{"code": "invalid_hyperparameters", "message": "Cannot train logreg with these hyperparameters: The 'C' parameter of LogisticRegression must be a float in the range (0.0, inf]. Got 0 instead.", "details": null}
 ```
 
 - `class_weight` is `"balanced"` or a dict of weights by class, like `{"0": 1, "1": 4}`: JSON object keys are
@@ -194,7 +213,7 @@ curl -X POST http://127.0.0.1:8000/model/train \
   combinations it refuses, get `422` with the reason:
 
 ```json
-{"detail": "Cannot train logreg with 1 of 2 combinations of the grid: {\"C\": 0}; the first one fails with: The 'C' parameter of LogisticRegression must be a float in the range (0.0, inf]. Got 0 instead."}
+{"code": "invalid_hyperparameters", "message": "Cannot train logreg with 1 of 2 combinations of the grid: {\"C\": 0}; the first one fails with: The 'C' parameter of LogisticRegression must be a float in the range (0.0, inf]. Got 0 instead.", "details": null}
 ```
 
 - A `cv` larger than the number of customers of a churn class in the train part gets `409`.
@@ -306,17 +325,134 @@ Answer to the list from the model trained without class weights (probabilities r
 overstates it (`0.164` and `0.942` for the same customers), so read it as a risk score rather than the real chance of
 leaving.
 
-Before the first training the endpoint answers `503`:
-
-```json
-{"detail": "Churn model is not trained yet, call POST /model/train first"}
-```
-
-Customers that fail validation get `422`. The body is one customer or a list, so the error `loc` names the type it was
-checked against, for example `["body", "FeatureVectorChurn", "region"]`.
+Before the first training the endpoint answers `503`; invalid customers and an empty list get `422`. The answers are
+shown in [Errors](#errors).
 
 How it works: [docs/prediction.md](docs/prediction.md). The models, their hyperparameters and tuning:
 [docs/model_training.md](docs/model_training.md).
+
+## Errors
+
+Every error answers with the same JSON body, whatever the status: `code` names the error for a client to branch on,
+`message` explains it and `details` holds structured context or `null`. Neither of them names server paths or holds
+a traceback: the reason of a `5xx` goes to the server log only.
+
+```json
+{"code": "dataset_unavailable", "message": "Dataset is not available", "details": null}
+```
+
+| `code` | Status | When |
+|--------|--------|------|
+| `validation_error` | `422` | the request does not match the schema: a wrong type, a value out of range, a missing or unknown field, an empty list of customers; `details` lists every invalid value |
+| `invalid_hyperparameters` | `422` | `/model/train`, `/model/tune`: the body is valid, but the model does not know a hyperparameter or refuses its value |
+| `dataset_not_trainable` | `409` | the dataset is loaded but cannot be split and trained on, or a churn class of the train part is smaller than `cv` |
+| `dataset_unavailable` | `503` | the dataset file is missing, empty or broken |
+| `model_not_trained` | `503` | `/predict` before the first `/model/train` |
+| `prediction_failed` | `500` | the model fails to predict for valid customers |
+| `internal_error` | `500` | any other unexpected failure |
+| `not_found`, `method_not_allowed`, ... | `404`, `405`, ... | an unknown path or method; `code` is the status phrase in snake case |
+
+An item of `details` of a `validation_error` has `loc`, where the value is (the part of the request, then the keys
+and indexes down to it), `message` and `type`, the pydantic error type that does not change with the wording. The
+invalid value itself is not repeated.
+
+Values are converted when nothing is lost: numbers sent as strings (`"29.99"`), whole floats for integer features
+(`18.0`) and `true`/`false` for integers are accepted. A fractional value for an integer feature (`1.5`), an unknown
+category, `NaN` and infinity are refused.
+
+`/docs` shows the error answers of every endpoint as response examples.
+
+### Errors of /model/train
+
+A model type the service does not know, `{"model_type": "xgboost"}`:
+
+```json
+{
+  "code": "validation_error",
+  "message": "Request failed validation, see details for every error",
+  "details": [
+    {"loc": ["body", "model_type"], "message": "Input should be 'logreg' or 'random_forest'", "type": "literal_error"}
+  ]
+}
+```
+
+A hyperparameter the model does not know, `{"hyperparameters": {"n_estimators": 10}}` for the default `logreg`:
+
+```json
+{"code": "invalid_hyperparameters", "message": "Unknown hyperparameters of logreg: n_estimators; valid ones are C, class_weight, dual, fit_intercept, intercept_scaling, l1_ratio, max_iter, n_jobs, penalty, random_state, solver, tol, verbose, warm_start", "details": null}
+```
+
+A dataset with a header only or no labeled row, `409`:
+
+```json
+{"code": "dataset_not_trainable", "message": "Dataset cannot be used for training: Dataset has no labeled rows", "details": null}
+```
+
+A missing, empty or broken dataset file, `503`; the file path stays in the log:
+
+```json
+{"code": "dataset_unavailable", "message": "Dataset is not available", "details": null}
+```
+
+A failed training keeps the previous model.
+
+### Errors of /predict
+
+No model trained yet, `503`:
+
+```json
+{"code": "model_not_trained", "message": "Churn model is not trained yet, call POST /model/train first", "details": null}
+```
+
+A wrong type of a value, `"monthly_fee": "abc"`. The body is checked as a list when it is one and as one customer
+otherwise, so `loc` starts with the type it was checked against:
+
+```json
+{
+  "code": "validation_error",
+  "message": "Request failed validation, see details for every error",
+  "details": [
+    {"loc": ["body", "FeatureVectorChurn", "monthly_fee"],
+     "message": "Input should be a valid number, unable to parse string as a number", "type": "float_parsing"}
+  ]
+}
+```
+
+A wrong set of features: the second customer of a list has no `autopay_enabled` and an unknown `contract_type`. In a
+list `loc` goes on with the index of the customer:
+
+```json
+{
+  "code": "validation_error",
+  "message": "Request failed validation, see details for every error",
+  "details": [
+    {"loc": ["body", "list[FeatureVectorChurn]", 1, "autopay_enabled"], "message": "Field required", "type": "missing"},
+    {"loc": ["body", "list[FeatureVectorChurn]", 1, "contract_type"],
+     "message": "Extra inputs are not permitted", "type": "extra_forbidden"}
+  ]
+}
+```
+
+An empty list, `[]`:
+
+```json
+{
+  "code": "validation_error",
+  "message": "Request failed validation, see details for every error",
+  "details": [
+    {"loc": ["body", "list[FeatureVectorChurn]"],
+     "message": "List should have at least 1 item after validation, not 0", "type": "too_short"}
+  ]
+}
+```
+
+The model fails on valid customers, `500`; the reason and the traceback stay in the log:
+
+```json
+{"code": "prediction_failed", "message": "Churn model failed to make a prediction", "details": null}
+```
+
+Why these statuses and this format: [docs/error_handling.md](docs/error_handling.md).
 
 ## Tests
 

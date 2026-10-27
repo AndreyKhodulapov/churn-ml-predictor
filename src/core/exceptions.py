@@ -20,5 +20,26 @@ class ModelLoadError(Exception):
     """The saved churn model file cannot be read or does not hold a churn model."""
 
 
+class ModelFeaturesMismatchError(Exception):
+    """The served churn model was trained on other features than a prediction request carries.
+
+    It is a fault of the service, not of the request: predict_churn() reports it as PredictionError.
+    """
+
+
+class PredictionError(Exception):
+    """The served churn model fails to predict for a request that has passed validation.
+
+    It is a fault of the service, not of the request. The message and its cause name model internals, so they go to
+    the log and the client gets a generic message.
+    """
+
+
 class ModelNotTrainedError(Exception):
-    """A prediction is requested before any churn model has been trained or loaded."""
+    """A prediction is requested before any churn model has been trained or loaded.
+
+    The message names the fix and nothing of the server, so it is safe to return to the client.
+    """
+
+    def __init__(self, message: str = "Churn model is not trained yet, call POST /model/train first") -> None:
+        super().__init__(message)

@@ -119,6 +119,14 @@ def test_load_rejects_model_saved_before_model_type_and_hyperparameters(trained_
         load_churn_model(model_path)
 
 
+def test_load_rejects_model_trained_on_other_features(trained_model, model_path, X):
+    pipeline = train_churn_model(X.assign(discount=0), pd.Series([0, 0, 1, 1]))
+    save_churn_model(replace(trained_model, pipeline=pipeline), model_path)
+
+    with pytest.raises(ModelLoadError, match="does not fit the requests: .*discount.*; retrain it"):
+        load_churn_model(model_path)
+
+
 def test_load_warns_about_model_saved_with_other_sklearn_version(trained_model, model_path, caplog):
     save_churn_model(replace(trained_model, sklearn_version="1.0.0"), model_path)
 

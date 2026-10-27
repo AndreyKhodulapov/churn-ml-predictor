@@ -1,3 +1,7 @@
+import json
+
+import pytest
+
 from src.schemas.prediction import FeatureVectorChurn
 
 
@@ -15,7 +19,9 @@ async def test_predict_rejects_unknown_region(client, customer_features):
 
     assert response.status_code == 422
     # The body is one customer or a list of them, so the error names the branch the input was checked against.
-    assert response.json()["detail"][0]["loc"] == ["body", "FeatureVectorChurn", "region"]
+    assert response.json()["details"][0]["loc"] == ["body", "FeatureVectorChurn", "region"]
+    # An object is checked as one customer only, so the list branch adds no error of its own.
+    assert len(response.json()["details"]) == 1
 
 
 async def test_predict_rejects_missing_feature(client, customer_features):
@@ -25,7 +31,68 @@ async def test_predict_rejects_missing_feature(client, customer_features):
 
     assert response.status_code == 422
     # The body is one customer or a list of them, so the error names the branch the input was checked against.
-    assert response.json()["detail"][0]["loc"] == ["body", "FeatureVectorChurn", "failed_payments"]
+    assert response.json()["details"][0]["loc"] == ["body", "FeatureVectorChurn", "failed_payments"]
+    assert len(response.json()["details"]) == 1
+
+
+@pytest.mark.parametrize("field", ["contract_type", "churn"])
+async def test_predict_rejects_unknown_feature(client, customer_features, field):
+    customer_features[field] = 1
+
+    response = await client.post("/predict", json=customer_features)
+
+    assert response.status_code == 422
+    assert response.json()["details"] == [
+        {
+            "loc": ["body", "FeatureVectorChurn", field],
+            "message": "Extra inputs are not permitted",
+            "type": "extra_forbidden",
+        }
+    ]
+
+
+async def test_predict_rejects_unknown_feature_of_a_customer_in_a_list(client, customer_features):
+    response = await client.post("/predict", json=[customer_features, {**customer_features, "contract_type": "annual"}])
+
+    assert response.status_code == 422
+    assert [error["loc"] for error in response.json()["details"]] == [
+        ["body", "list[FeatureVectorChurn]", 1, "contract_type"]
+    ]
+
+
+# 1e400 is valid JSON too large for a float and is read as infinity; NaN and Infinity are extensions Python accepts.
+@pytest.mark.parametrize("value", ["1e400", "-1e400", "Infinity", "NaN"])
+async def test_predict_rejects_value_that_is_not_finite(client, customer_features, value):
+    body = json.dumps({**customer_features, "monthly_fee": 0}).replace('"monthly_fee": 0', f'"monthly_fee": {value}')
+
+    response = await client.post("/predict", content=body, headers={"Content-Type": "application/json"})
+
+    assert response.status_code == 422
+    assert response.json()["details"] == [
+        {
+            "loc": ["body", "FeatureVectorChurn", "monthly_fee"],
+            "message": "Input should be a finite number",
+            "type": "finite_number",
+        }
+    ]
+
+
+async def test_predict_names_the_invalid_customer_of_a_list(client, customer_features):
+    invalid = {**customer_features, "monthly_fee": "abc"}
+
+    response = await client.post("/predict", json=[customer_features, invalid])
+
+    assert response.status_code == 422
+    assert [error["loc"] for error in response.json()["details"]] == [
+        ["body", "list[FeatureVectorChurn]", 1, "monthly_fee"]
+    ]
+
+
+async def test_predict_checks_a_body_of_another_type_as_one_customer(client):
+    response = await client.post("/predict", json="customer")
+
+    assert response.status_code == 422
+    assert [error["loc"] for error in response.json()["details"]] == [["body", "FeatureVectorChurn"]]
 
 
 async def test_openapi_describes_feature_schema(client):

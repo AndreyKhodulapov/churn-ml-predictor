@@ -4,9 +4,10 @@ import re
 import pandas as pd
 import pytest
 
-from src.core.constants import BINARY_FEATURES, CATEGORICAL_FEATURES, NUMERIC_FEATURES, TARGET_COLUMN
+from src.core.constants import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURES, NUMERIC_FEATURES, TARGET_COLUMN
 from src.core.exceptions import DatasetNotTrainableError
 from src.schemas.dataset import ClassDistribution, DatasetRowChurn, SplitDataInfo
+from src.schemas.prediction import FeatureVectorChurn
 from src.services.preprocessing import (
     PreparedData,
     build_imputer,
@@ -16,8 +17,6 @@ from src.services.preprocessing import (
     prepare_data,
     split_data,
 )
-
-FEATURES = [*NUMERIC_FEATURES, *CATEGORICAL_FEATURES]
 
 
 @pytest.fixture
@@ -31,8 +30,11 @@ def make_df(customer_features):
     return make
 
 
-def test_feature_lists_match_dataset_schema():
+def test_feature_lists_match_dataset_and_request_schemas():
+    assert len(FEATURES) == len(set(FEATURES))
     assert set(FEATURES) == DatasetRowChurn.model_fields.keys() - {TARGET_COLUMN}
+    # /predict builds its rows from FeatureVectorChurn, so it has to carry every feature the model is trained on.
+    assert set(FEATURES) == FeatureVectorChurn.model_fields.keys()
     assert not set(NUMERIC_FEATURES) & set(CATEGORICAL_FEATURES)
     assert set(BINARY_FEATURES) <= set(NUMERIC_FEATURES)
 
@@ -40,7 +42,7 @@ def test_feature_lists_match_dataset_schema():
 def test_prepare_data_separates_features_and_target(make_df):
     prepared = prepare_data(make_df(0, 1, 1))
 
-    assert list(prepared.X.columns) == FEATURES
+    assert list(prepared.X.columns) == list(FEATURES)
     assert prepared.y.tolist() == [0, 1, 1]
     assert (prepared.numeric_features, prepared.categorical_features) == (NUMERIC_FEATURES, CATEGORICAL_FEATURES)
 
@@ -87,7 +89,7 @@ def test_imputer_fills_gaps_with_train_statistics(make_df):
 
     filled = imputer.transform(test)
 
-    assert list(filled.columns) == FEATURES
+    assert list(filled.columns) == list(FEATURES)
     # The train median; the mean would be 40.0.
     assert filled.loc[3, "monthly_fee"] == 20.0
     assert filled.loc[3, "region"] == "asia"
@@ -180,7 +182,7 @@ def test_get_split_splits_default_dataset_once():
     split = get_split()
 
     assert (len(split.X_train), len(split.X_test)) == (1600, 400)
-    assert list(split.X_train.columns) == list(split.X_test.columns) == FEATURES
+    assert list(split.X_train.columns) == list(split.X_test.columns) == list(FEATURES)
     assert get_split() is split
 
 

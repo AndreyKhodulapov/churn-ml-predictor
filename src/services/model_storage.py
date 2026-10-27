@@ -11,8 +11,9 @@ import sklearn
 from sklearn.pipeline import Pipeline
 
 from src.core.constants import MODEL_PATH, ModelType
-from src.core.exceptions import ModelLoadError
+from src.core.exceptions import ModelFeaturesMismatchError, ModelLoadError
 from src.schemas.learning import ModelStatus, TrainMetrics
+from src.schemas.prediction import FeatureVectorChurn
 from src.services.learning import describe_hyperparameters
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,22 @@ class TrainedChurnModel:
     trained_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     # A pickled estimator is only guaranteed to behave the same under the scikit-learn version that saved it.
     sklearn_version: str = sklearn.__version__
+
+
+def check_model_features(pipeline: Pipeline) -> list[str]:
+    """Features the pipeline was fitted on, in their order; they have to be exactly the ones a request carries.
+
+    Raise ModelFeaturesMismatchError otherwise: the pipeline would not refuse such a request by itself, see
+    build_model_input().
+    """
+    # Remembered by fit() from the columns of the train part, so they are the features of this very model.
+    features = list(pipeline.feature_names_in_)
+    sent = FeatureVectorChurn.model_fields.keys()
+    if set(features) != sent:
+        raise ModelFeaturesMismatchError(
+            f"Churn model is trained on features {features}, a request carries {sorted(sent)}"
+        )
+    return features
 
 
 def save_churn_model(model: TrainedChurnModel, path: Path) -> None:
@@ -61,6 +78,11 @@ def load_churn_model(path: Path) -> TrainedChurnModel:
     missing = [f.name for f in fields(TrainedChurnModel) if f.name not in vars(model)]
     if missing:
         raise ModelLoadError(f"{path} holds a churn model of an older format without {', '.join(missing)}, retrain it")
+    # A model saved before a feature was added, renamed or dropped loads fine and would fail only on /predict.
+    try:
+        check_model_features(model.pipeline)
+    except ModelFeaturesMismatchError as e:
+        raise ModelLoadError(f"{path} holds a churn model that does not fit the requests: {e}; retrain it") from e
     if model.sklearn_version != sklearn.__version__:
         logger.warning(
             "Churn model %s was saved with scikit-learn %s and runs on %s, its predictions may differ",

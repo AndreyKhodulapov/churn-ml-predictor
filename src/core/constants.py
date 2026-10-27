@@ -46,6 +46,8 @@ NUMERIC_FEATURES = (
     "autopay_enabled",
 )
 CATEGORICAL_FEATURES = ("region", "device_type", "payment_method")
+# Columns of the training data in this order: the fitted pipeline remembers them as feature_names_in_.
+FEATURES = (*NUMERIC_FEATURES, *CATEGORICAL_FEATURES)
 # Numeric 0/1 flags: a gap is filled with 0 or 1, while a mean or an even-split median would be fractional.
 BINARY_FEATURES = ("autopay_enabled",)
 
@@ -59,5 +61,3 @@ DATA_DIR = PROJECT_ROOT / "data"
 DATASET_PATH = DATA_DIR / "churn_dataset.csv"
 MODELS_DIR = PROJECT_ROOT / "models"
 MODEL_PATH = MODELS_DIR / "churn_model.joblib"
-
-MODEL_NOT_TRAINED_DETAIL = "Churn model is not trained yet, call POST /model/train first"

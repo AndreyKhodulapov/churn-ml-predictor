@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from src.core.constants import DeviceType, PaymentMethod, Region
 from src.schemas.base import BaseSchema
@@ -12,6 +12,10 @@ class DatasetRowChurn(BaseSchema):
     Unlike FeatureVectorChurn, every value may be missing: gaps are normal in raw data
     and preprocessing decides how to handle them. Every column still has to be present.
     """
+
+    # pandas reads inf from a CSV as infinity, which no imputer fills and the training refuses. A gap is NaN in the
+    # file too, but it is turned into None before validation.
+    model_config = ConfigDict(allow_inf_nan=False)
 
     monthly_fee: float | None = Field(ge=0)
     usage_hours: float | None = Field(ge=0)
