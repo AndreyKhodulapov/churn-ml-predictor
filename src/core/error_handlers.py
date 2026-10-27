@@ -4,7 +4,12 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from src.core.constants import MODEL_NOT_TRAINED_DETAIL
-from src.core.exceptions import DatasetLoadError, DatasetNotTrainableError, ModelNotTrainedError
+from src.core.exceptions import (
+    DatasetLoadError,
+    DatasetNotTrainableError,
+    InvalidHyperparametersError,
+    ModelNotTrainedError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +25,12 @@ async def dataset_not_trainable_handler(request: Request, exc: DatasetNotTrainab
     # not 422, which is for bad input. The message names counts and classes only, so it is returned as is.
     logger.warning("Dataset cannot be used for training: %s", exc)
     return JSONResponse(status_code=409, content={"detail": f"Dataset cannot be used for training: {exc}"})
+
+
+async def invalid_hyperparameters_handler(request: Request, exc: InvalidHyperparametersError) -> JSONResponse:
+    # The body passes the schema, but the chosen model refuses its hyperparameters: 422 like any other bad input.
+    # The message names the model type and hyperparameters only, so it is returned as is.
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
 async def model_not_trained_handler(request: Request, exc: ModelNotTrainedError) -> JSONResponse:

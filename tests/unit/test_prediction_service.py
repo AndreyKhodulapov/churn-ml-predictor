@@ -22,7 +22,7 @@ def model(make_customer) -> TrainedChurnModel:
     # Churn is decided by failed payments alone, so even a tiny model separates the customers.
     X = pd.DataFrame([make_customer(value).model_dump() for value in [0, 0, 0, 5, 5, 5]])
     pipeline = train_churn_model(X, pd.Series([0, 0, 0, 1, 1, 1]))
-    return TrainedChurnModel(pipeline, TrainMetrics(accuracy=1.0, f1=1.0))
+    return TrainedChurnModel(pipeline, TrainMetrics(accuracy=1.0, f1=1.0), "logreg", {})
 
 
 def test_predicts_one_customer(model, make_customer):

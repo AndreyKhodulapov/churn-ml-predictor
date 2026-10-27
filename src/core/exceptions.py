@@ -9,6 +9,13 @@ class DatasetNotTrainableError(Exception):
     """
 
 
+class InvalidHyperparametersError(Exception):
+    """The hyperparameters requested for training are not accepted by the chosen model.
+
+    The message names the model type and hyperparameters only, so it is safe to return to the client.
+    """
+
+
 class ModelLoadError(Exception):
     """The saved churn model file cannot be read or does not hold a churn model."""
 
