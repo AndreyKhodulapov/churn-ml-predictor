@@ -25,6 +25,10 @@ from.
 - Listing the columns explicitly instead of using `select_dtypes` keeps the
   feature set stable when a column's dtype changes, for example `int64`
   turning into `float64` after a gap appears.
+- Here the lists are `NUMERIC_FEATURES` and `CATEGORICAL_FEATURES` in
+  `src/core/constants.py`. `BINARY_FEATURES` is not a third group but a
+  subset of the numeric one: it marks the 0/1 flags, which are filled with the
+  most frequent value and passed without scaling.
 
 ## Missing values
 
@@ -103,3 +107,28 @@ from.
 - By default it returns a numpy array; `set_output(transform="pandas")` keeps
   a `DataFrame`, and `verbose_feature_names_out=False` keeps the original
   column names instead of prefixes like `numeric__monthly_fee`.
+- The churn pipeline uses two of them in a row: the first fills gaps
+  (`SimpleImputer` per group), the second scales the numeric features with
+  `StandardScaler`, passes the 0/1 flags as they are and one-hot encodes the
+  categorical ones (`OneHotEncoder(handle_unknown="ignore")`). The classifier
+  is the last step, so the whole chain is saved and loaded as one object.
+
+## Feature order between training and prediction
+
+- A pipeline fitted on a `DataFrame` remembers its columns in
+  `feature_names_in_`. Here they are `FEATURES`, the numeric features
+  followed by the categorical ones, and `prepare_data` selects the training
+  columns in exactly that order.
+- `ColumnTransformer` picks columns by name, so it accepts them in another
+  order and ignores an extra one without a word. A column missing from
+  `pd.DataFrame(rows, columns=...)` would arrive as `NaN` and be filled like
+  a gap. None of this fails, the predictions just quietly drift from what
+  training did.
+- So the input of `/predict` is built from `feature_names_in_` of the served
+  model, not from the field order of `FeatureVectorChurn` (where
+  `autopay_enabled` is last), and a model whose features differ from the
+  request fields is refused, both when it is loaded from disk and before a
+  prediction.
+- A test checks that `FEATURES`, the dataset row schema and
+  `FeatureVectorChurn` list the same features, and `GET /model/schema` shows
+  them to clients in the training order with their types and accepted values.
