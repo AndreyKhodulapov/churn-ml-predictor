@@ -106,6 +106,16 @@ is measured and how their hyperparameters are tuned.
   rare class. Here it is computed for the churn class.
 - A model that never predicts churn has no precision to compute;
   `zero_division=0` makes its F1 0 instead of a warning.
+- ROC-AUC is computed from the churn probabilities (`predict_proba`) rather
+  than the labels: it is the chance that a random churner gets a higher
+  probability than a random customer who stays. 0.5 is a random guess, 1 a
+  perfect ranking. It does not depend on the 0.5 threshold, so a model with
+  F1 0 can still rank churners well. It needs both classes in the test part,
+  which the stratified split keeps.
+- On the bundled dataset every model gets ROC-AUC about 0.6, and class weights
+  barely change it (0.609 without them, 0.611 balanced): they move the
+  threshold, not the ranking. F1 shows how useful the labels are, ROC-AUC
+  how useful the probabilities are as a risk score.
 - Metrics are taken on the test part, which the model has not seen, so they
   estimate quality on new customers.
 

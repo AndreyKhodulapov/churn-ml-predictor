@@ -19,7 +19,7 @@ customers with it.
 | GET | `/dataset/preview?n=5` | first `n` rows of the training dataset, `1 <= n <= 100` |
 | GET | `/dataset/info` | row and column counts, feature names, churn class distribution |
 | GET | `/dataset/split-info` | train and test sizes, churn class distribution in each part |
-| POST | `/model/train` | train the churn model of the type and with the hyperparameters from the optional JSON body, save it, return accuracy and churn F1 on the test part |
+| POST | `/model/train` | train the churn model of the type and with the hyperparameters from the optional JSON body, save it, return accuracy, churn F1 and ROC-AUC on the test part |
 | POST | `/model/tune` | score a grid of hyperparameters by cross-validation on the train part, return the best config ready for `/model/train` and the five best combinations; changes no model |
 | GET | `/model/status` | whether a model is trained, when, its type, main hyperparameters and test metrics |
 | GET | `/model/schema` | features `/predict` expects, in the training order: how the model treats each one, its type and accepted values |
@@ -174,18 +174,23 @@ and its shares, taken over all rows, sum to less than 1 when such rows exist.
 
 `/model/train` responses for the bundled dataset:
 
-| `model_type` | `hyperparameters` | accuracy | churn F1 |
-|---|---|---|---|
-| `logreg` | `{}` | 0.79 | 0.045 |
-| `logreg` | `{"class_weight": "balanced"}` | 0.5875 | 0.348 |
-| `random_forest` | `{}` | 0.7825 | 0.171 |
-| `random_forest` | `{"class_weight": "balanced"}` | 0.695 | 0.238 |
-| `random_forest` | `{"n_estimators": 300, "max_depth": 5, "class_weight": "balanced"}` | 0.62 | 0.309 |
+| `model_type` | `hyperparameters` | accuracy | churn F1 | ROC-AUC |
+|---|---|---|---|---|
+| `logreg` | `{}` | 0.79 | 0.045 | 0.609 |
+| `logreg` | `{"class_weight": "balanced"}` | 0.5875 | 0.348 | 0.611 |
+| `random_forest` | `{}` | 0.7825 | 0.171 | 0.585 |
+| `random_forest` | `{"class_weight": "balanced"}` | 0.695 | 0.238 | 0.585 |
+| `random_forest` | `{"n_estimators": 300, "max_depth": 5, "class_weight": "balanced"}` | 0.62 | 0.309 | 0.611 |
 
 Without class weights, with 20% churners, the logistic regression almost never predicts churn: its accuracy is close
 to the 0.7975 of always answering "stays" and its F1 is near zero. `"class_weight": "balanced"` weights churners up,
 and the model catches about half of them at the cost of accuracy. A random forest of fully grown trees fits the noise
 of the train part; shallow trees do better, but on this dataset the balanced logistic regression is still ahead.
+
+`roc_auc` scores the churn probability rather than the label: how often a churner gets a higher one than a customer
+who stays, 0.5 for a random guess. Class weights move the 0.5 threshold, not this ranking, so they change F1 a lot
+and ROC-AUC barely: the unweighted logistic regression ranks churners as well as the balanced one and only fails to
+call them churners.
 
 ## Hyperparameter tuning
 
@@ -273,7 +278,7 @@ and after training a random forest with `{"n_estimators": 300, "max_depth": 5, "
 {
   "trained": true,
   "trained_at": "2026-10-27T10:11:34.699584Z",
-  "metrics": {"accuracy": 0.62, "f1": 0.3090909090909091},
+  "metrics": {"accuracy": 0.62, "f1": 0.3090909090909091, "roc_auc": 0.6114013700220596},
   "model_type": "random_forest",
   "hyperparameters": {
     "n_estimators": 300,

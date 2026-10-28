@@ -35,7 +35,7 @@ def store(tmp_path) -> ChurnModelStore:
 def test_returns_test_metrics(separable_split, store):
     metrics = train_and_save_churn_model(separable_split, TrainingConfigChurn(), store)
 
-    assert metrics == TrainMetrics(accuracy=1.0, f1=1.0)
+    assert metrics == TrainMetrics(accuracy=1.0, f1=1.0, roc_auc=1.0)
 
 
 def test_serves_and_saves_the_trained_model_with_its_type_and_hyperparameters(separable_split, store):

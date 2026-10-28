@@ -17,7 +17,7 @@ router = APIRouter(tags=["Model"], prefix="/model")
 @router.post(
     "/train",
     summary="Train the churn model and serve it",
-    response_description="Accuracy and churn F1 of the new model on the test part",
+    response_description="Accuracy, churn F1 and ROC-AUC of the new model on the test part",
     responses=TRAIN_RESPONSES,
 )
 def train_model(

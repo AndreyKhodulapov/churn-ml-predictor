@@ -48,7 +48,7 @@ async def test_train_returns_test_metrics_of_default_dataset(client):
 
     assert response.status_code == 200
     body = response.json()
-    assert body.keys() == {"accuracy", "f1"}
+    assert body.keys() == {"accuracy", "f1", "roc_auc"}
     assert all(0 <= value <= 1 for value in body.values())
 
 
@@ -297,7 +297,7 @@ async def test_train_fits_and_scores_served_split(client, separable_split):
     response = await client.post("/model/train")
 
     assert response.status_code == 200
-    assert response.json() == {"accuracy": 1.0, "f1": 1.0}
+    assert response.json() == {"accuracy": 1.0, "f1": 1.0, "roc_auc": 1.0}
 
 
 async def test_train_answers_503_without_dataset(client, model_store):

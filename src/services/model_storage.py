@@ -76,6 +76,9 @@ def load_churn_model(path: Path) -> TrainedChurnModel:
         raise ModelLoadError(f"{path} holds {type(model).__name__}, not a churn model")
     # A file saved before a field was added unpickles without it and would fail only once the field is read.
     missing = [f.name for f in fields(TrainedChurnModel) if f.name not in vars(model)]
+    # The same holds for a metric added to TrainMetrics: pydantic restores the saved fields only.
+    if "metrics" not in missing:
+        missing += [f"metrics.{name}" for name in TrainMetrics.model_fields if name not in vars(model.metrics)]
     if missing:
         raise ModelLoadError(f"{path} holds a churn model of an older format without {', '.join(missing)}, retrain it")
     # A model saved before a feature was added, renamed or dropped loads fine and would fail only on /predict.
