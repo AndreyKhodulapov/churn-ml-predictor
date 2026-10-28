@@ -77,7 +77,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 app = FastAPI(
     title="Churn ML Predictor",
     description="Predicts whether a customer will leave the service next month.",
-    version="0.1.0",
+    version="1.0.0",
     lifespan=lifespan,
 )
 app.add_exception_handler(HTTPException, http_error_handler)  # type: ignore[arg-type]
