@@ -1,123 +1,82 @@
 # churn-ml-predictor
 
-A FastAPI service that predicts customer churn: whether a customer will leave
-the service next month (`churn = 1`) or stay (`churn = 0`), based on their
-billing, usage and support history.
+A FastAPI service that predicts customer churn: whether a customer will leave the service next month (`churn = 1`) or
+stay (`churn = 0`), based on their billing, usage and support history. It trains the model on a CSV dataset, keeps it
+across restarts and serves predictions over HTTP, locally or in Docker.
 
-Current state: the API validates customer features, serves the training
-dataset, trains a logistic regression or a random forest on it with the
-requested hyperparameters, finds the best hyperparameters by grid search,
-keeps the trained model on disk across restarts, records the test metrics of
-every training to compare configs and predicts churn of new customers with
-the model. It reports its readiness at `/health`, logs the key events and runs
-in a Docker container.
+Start here: [Purpose](#purpose) · [Dataset](#dataset-churn_datasetcsv) · [Run locally](#run-locally) ·
+[Run in Docker](#run-in-docker) · [Train and predict](#train-and-predict)
 
-## Endpoints
+Reference: [Endpoints](#endpoints) · [Training config](#training-config) ·
+[Hyperparameter tuning](#hyperparameter-tuning) · [Trained model](#trained-model) ·
+[Training history](#training-history) · [Prediction](#prediction) · [Health and logs](#health-and-logs) ·
+[Errors](#errors) · [Tests](#tests) · [Project layout](#project-layout)
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | health message |
-| GET | `/health` | whether the dataset is loaded and can be trained on and a model is served; always `200`, `status` is `ok` or `degraded` |
-| POST | `/predict` | predict churn of one customer or a list of them: class and probabilities of both classes; `503` until a model is trained |
-| GET | `/dataset/preview?n=5` | first `n` rows of the training dataset, `1 <= n <= 100` |
-| GET | `/dataset/info` | row and column counts, feature names, churn class distribution |
-| GET | `/dataset/split-info` | train and test sizes, churn class distribution in each part |
-| POST | `/model/train` | train the churn model of the type and with the hyperparameters from the optional JSON body, save it, return accuracy, churn F1 and ROC-AUC on the test part |
-| POST | `/model/tune` | score a grid of hyperparameters by cross-validation on the train part, return the best config ready for `/model/train` and the five best combinations; changes no model |
-| GET | `/model/status` | whether a model is trained, when, its type, main hyperparameters and test metrics |
-| GET | `/model/metrics?model_type=&limit=10&best_by=` | the latest training, the `limit` newest ones and the best one by a test metric, optionally of one model type |
-| GET | `/model/schema` | features `/predict` expects, in the training order: how the model treats each one, its type and accepted values |
+## Purpose
 
-Endpoints that need the dataset answer `503` while it is missing or broken, and `409` with the reason while it
-cannot be split and trained on (no labeled rows, a single churn class, too few rows); the service itself keeps running.
-Every error has the same JSON body, see [Errors](#errors).
+A customer who is about to leave can still be kept, with a discount, a call or a fix of what went wrong, but an offer
+sent to every customer costs too much and mostly reaches those who would stay anyway. The service tells, for each
+customer, how likely they are to leave next month, so that retention goes to those at risk first.
 
-## Features
+It covers the whole loop on one dataset:
 
-| Field | Type | Values |
-|-------|------|--------|
-| `monthly_fee` | float | >= 0, finite |
-| `usage_hours` | float | >= 0, finite, hours used last month |
-| `support_requests` | int | >= 0 |
-| `account_age_months` | int | >= 0 |
-| `failed_payments` | int | >= 0 |
-| `region` | str | `europe`, `asia`, `america`, `africa` |
-| `device_type` | str | `mobile`, `desktop`, `tablet` |
-| `payment_method` | str | `card`, `paypal`, `crypto` |
-| `autopay_enabled` | int | `0` or `1` |
+1. load and validate the training data and show what is in it: `/dataset/*`;
+2. train a logistic regression or a random forest with the requested hyperparameters and score it on a held-out test
+   part, `/model/train`, or search a grid for the best hyperparameters, `/model/tune`;
+3. keep the trained model across restarts and record every training to compare configs: `/model/status`,
+   `/model/metrics`;
+4. predict churn of one customer or a batch with the served model: `/predict`;
+5. report what it can do right now, `/health`, and log the key events.
 
-A training dataset row has the same fields plus the `churn` label (`0` or `1`). A `/predict` customer with a field
-that is not in this table, `churn` included, gets `422`, so a client never believes the model uses a field it ignores.
+About 20% of the customers in the data leave, so a model that never predicts churn is already 80% accurate. That is
+why every training reports F1 of the churn class and ROC-AUC next to accuracy, see [Training config](#training-config).
 
-`GET /model/schema` returns the same table for a client to build requests from. The features come in the order the
-model is trained on them, each with its `kind` (`numeric`, `binary` or `categorical`), JSON Schema `type`,
-`allowed_values` and `minimum`; it answers before the first training too.
+## Dataset: churn_dataset.csv
 
-```json
-{"features": [
-  {"name": "monthly_fee", "kind": "numeric", "type": "number", "allowed_values": null, "minimum": 0},
-  ...
-  {"name": "autopay_enabled", "kind": "binary", "type": "integer", "allowed_values": [0, 1], "minimum": null},
-  {"name": "region", "kind": "categorical", "type": "string", "allowed_values": ["europe", "asia", "america", "africa"], "minimum": null},
-  ...
-]}
+The training data lives in `data/churn_dataset.csv`: one row per customer, comma-separated, with a header row. Columns
+are found by name, so their order does not matter.
+
+| Column | Type | Accepted values | In the bundled dataset |
+|--------|------|-----------------|------------------------|
+| `monthly_fee` | float | >= 0, finite | 9.99, 19.99, 29.99 or 49.99 |
+| `usage_hours` | float | >= 0, finite, hours used last month | 0 to 52.07 |
+| `support_requests` | int | >= 0 | 0 to 4 |
+| `account_age_months` | int | >= 0 | 1 to 39 |
+| `failed_payments` | int | >= 0 | 0 to 2 |
+| `region` | str | `europe`, `asia`, `america`, `africa` | all four |
+| `device_type` | str | `mobile`, `desktop`, `tablet` | all three |
+| `payment_method` | str | `card`, `paypal`, `crypto` | all three |
+| `autopay_enabled` | int | `0` or `1` | both |
+| `churn` | int | `1` - the customer left the next month, `0` - stayed | 403 of 2000 rows are `1` |
+
+```csv
+monthly_fee,usage_hours,support_requests,account_age_months,failed_payments,region,device_type,payment_method,autopay_enabled,churn
+9.99,27.92,1,14,1,america,desktop,card,1,1
+19.99,21.48,2,1,0,america,mobile,card,1,0
 ```
 
-## Dataset
+- Every column has to be present, but any cell may be empty. A row without `churn` cannot be trained on and is
+  dropped; an empty feature is filled, see below. The bundled dataset has no gaps.
+- A value of a wrong type, a negative number, infinity or an unknown category makes the whole file invalid, and so
+  does a missing column.
+- A column not in the table is loaded and listed by `/dataset/info`, but the model is not trained on it.
 
-The training data lives in `data/churn_dataset.csv`. It is loaded and
-validated once at startup. If the file is missing, empty or a row does not
-match the schema, the service still starts and logs the reason; the endpoints
-that need the dataset answer `503` with `dataset_unavailable` and retry the load
-on every request until the file is fixed.
+The file is loaded and validated once at startup. If it is missing, empty or invalid, the service still starts and
+logs the reason, with the line of the first invalid row; the endpoints that need the dataset answer `503` with
+`dataset_unavailable` and retry the load on every request until the file is fixed.
 
-At startup the dataset is also prepared for training: rows without a `churn`
-label are dropped, the features are split 80/20 into train and test with the
-churn share kept the same in both parts (`stratify`, fixed `random_state`), and
-feature gaps are filled with the train median (numeric) or the most frequent
-train value (`autopay_enabled` and categorical). A warning is logged if a churn
-class share differs between train and test by more than 1 percentage point.
+At startup the dataset is also prepared for training: rows without a `churn` label are dropped, the features are split
+80/20 into train and test with the churn share kept the same in both parts (`stratify`, fixed `random_state`), and
+feature gaps are filled with the train median (numeric) or the most frequent train value (`autopay_enabled` and
+categorical). A warning is logged if a churn class share differs between train and test by more than 1 percentage
+point.
 
-## Run
-
-Requires Python 3.11+.
-
-```bash
-make install           # create .venv and install dependencies
-cp .env.example .env   # optional: settings of the service, see Health and logs
-make run               # start the service with auto-reload
-```
-
-Without make:
+What the service has loaded:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn src.main:app --reload
-```
-
-Then open:
-
-- http://127.0.0.1:8000/ - health message
-- http://127.0.0.1:8000/health - what the service can do right now
-- http://127.0.0.1:8000/docs - interactive API docs (Swagger UI)
-
-Example requests:
-
-```bash
-curl "http://127.0.0.1:8000/dataset/preview?n=3"
+curl "http://127.0.0.1:8000/dataset/preview?n=3"   # the first rows as the service validated them
 curl http://127.0.0.1:8000/dataset/info
 curl http://127.0.0.1:8000/dataset/split-info
-curl -X POST http://127.0.0.1:8000/model/train
-curl -X POST http://127.0.0.1:8000/model/train \
-  -H "Content-Type: application/json" \
-  -d '{"model_type": "random_forest", "hyperparameters": {"n_estimators": 300, "max_depth": 5, "class_weight": "balanced"}}'
-curl -X POST http://127.0.0.1:8000/model/tune
-curl -X POST http://127.0.0.1:8000/model/tune \
-  -H "Content-Type: application/json" \
-  -d '{"model_type": "random_forest", "param_grid": {"max_depth": [3, 5, null], "class_weight": ["balanced"]}}'
-curl http://127.0.0.1:8000/model/status
 ```
 
 `/dataset/info` response for the bundled dataset:
@@ -156,6 +115,33 @@ and its shares, taken over all rows, sum to less than 1 when such rows exist.
 }
 ```
 
+## Run locally
+
+Requires Python 3.11+.
+
+```bash
+make install           # create .venv and install dependencies
+cp .env.example .env   # optional: settings of the service, see Health and logs
+make run               # start the service with auto-reload
+```
+
+Without make:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn src.main:app --reload
+```
+
+Then open:
+
+- http://127.0.0.1:8000/ - health message
+- http://127.0.0.1:8000/health - what the service can do right now
+- http://127.0.0.1:8000/docs - interactive API docs (Swagger UI)
+
+Next: [train a model and predict](#train-and-predict).
+
 ## Run in Docker
 
 ```bash
@@ -184,6 +170,87 @@ The service answers at the same addresses as above, http://127.0.0.1:8000/health
   so a model trained by one of several workers would not reach the others.
 
 Why the image is built this way: [docs/docker.md](docs/docker.md).
+
+## Train and predict
+
+With the service running, locally or in Docker. Before the first training it is up but cannot predict yet:
+
+```bash
+curl http://127.0.0.1:8000/health
+# {"status": "degraded", "dataset_loaded": true, "dataset_trainable": true, "model_available": false}
+```
+
+Train the default model, a logistic regression with the scikit-learn defaults, and get its metrics on the test part:
+
+```bash
+curl -X POST http://127.0.0.1:8000/model/train
+# {"accuracy": 0.79, "f1": 0.045454545454545456, "roc_auc": 0.6085374821007005}
+```
+
+Or choose the model and its hyperparameters, see [Training config](#training-config):
+
+```bash
+curl -X POST http://127.0.0.1:8000/model/train \
+  -H "Content-Type: application/json" \
+  -d '{"model_type": "random_forest", "hyperparameters": {"n_estimators": 300, "max_depth": 5, "class_weight": "balanced"}}'
+# {"accuracy": 0.62, "f1": 0.3090909090909091, "roc_auc": 0.6114013700220596}
+```
+
+The new model replaces the previous one at once and is saved to `models/`. Predict churn of one customer:
+
+```bash
+curl -X POST http://127.0.0.1:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"monthly_fee": 29.99, "usage_hours": 42.5, "support_requests": 1,
+       "account_age_months": 18, "failed_payments": 0, "region": "europe",
+       "device_type": "mobile", "payment_method": "card", "autopay_enabled": 1}'
+```
+
+or of a list of them:
+
+```bash
+curl -X POST http://127.0.0.1:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '[{"monthly_fee": 29.99, "usage_hours": 42.5, "support_requests": 1,
+        "account_age_months": 18, "failed_payments": 0, "region": "europe",
+        "device_type": "mobile", "payment_method": "card", "autopay_enabled": 1},
+       {"monthly_fee": 59.99, "usage_hours": 3.0, "support_requests": 6,
+        "account_age_months": 2, "failed_payments": 3, "region": "asia",
+        "device_type": "desktop", "payment_method": "crypto", "autopay_enabled": 0}]'
+```
+
+The answer is always a list, one prediction per customer in the order they were sent. From the default logistic
+regression (probabilities rounded):
+
+```json
+[
+  {"churn": 0, "probability_no_churn": 0.957, "probability_churn": 0.043},
+  {"churn": 1, "probability_no_churn": 0.189, "probability_churn": 0.811}
+]
+```
+
+What the answer means and which customers are refused: [Prediction](#prediction). Every endpoint with its request
+and response examples is in the interactive docs at http://127.0.0.1:8000/docs.
+
+## Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | health message |
+| GET | `/health` | whether the dataset is loaded and can be trained on and a model is served; always `200`, `status` is `ok` or `degraded` |
+| POST | `/predict` | predict churn of one customer or a list of them: class and probabilities of both classes; `503` until a model is trained |
+| GET | `/dataset/preview?n=5` | first `n` rows of the training dataset, `1 <= n <= 100` |
+| GET | `/dataset/info` | row and column counts, feature names, churn class distribution |
+| GET | `/dataset/split-info` | train and test sizes, churn class distribution in each part |
+| POST | `/model/train` | train the churn model of the type and with the hyperparameters from the optional JSON body, save it, return accuracy, churn F1 and ROC-AUC on the test part |
+| POST | `/model/tune` | score a grid of hyperparameters by cross-validation on the train part, return the best config ready for `/model/train` and the five best combinations; changes no model |
+| GET | `/model/status` | whether a model is trained, when, its type, main hyperparameters and test metrics |
+| GET | `/model/metrics?model_type=&limit=10&best_by=` | the latest training, the `limit` newest ones and the best one by a test metric, optionally of one model type |
+| GET | `/model/schema` | features `/predict` expects, in the training order: how the model treats each one, its type and accepted values |
+
+Endpoints that need the dataset answer `503` while it is missing or broken, and `409` with the reason while it
+cannot be split and trained on (no labeled rows, a single churn class, too few rows); the service itself keeps running.
+Every error has the same JSON body, see [Errors](#errors).
 
 ## Training config
 
@@ -240,6 +307,15 @@ curl -X POST http://127.0.0.1:8000/model/tune \
 curl -X POST http://127.0.0.1:8000/model/train \
   -H "Content-Type: application/json" \
   -d '{"model_type": "logreg", "hyperparameters": {"C": 0.1, "class_weight": "balanced"}}'
+```
+
+Other grids:
+
+```bash
+curl -X POST http://127.0.0.1:8000/model/tune   # the default logreg grid by churn F1
+curl -X POST http://127.0.0.1:8000/model/tune \
+  -H "Content-Type: application/json" \
+  -d '{"model_type": "random_forest", "param_grid": {"max_depth": [3, 5, null], "class_weight": ["balanced"]}}'
 ```
 
 - `param_grid` maps hyperparameter names of `model_type` to lists of values to try. Without it the default grid of
@@ -400,42 +476,33 @@ How the history is kept and why a config picked by its test metrics needs care:
 ## Prediction
 
 `POST /predict` takes one customer object or a list of them and always answers with a list: one prediction per
-customer, in the order they were sent. `/docs` shows both request examples and the answers to them.
+customer, in the order they were sent. The requests of [Train and predict](#train-and-predict) show both shapes, and
+`/docs` shows them with the answers too.
 
-```bash
-curl -X POST http://127.0.0.1:8000/model/train   # once, if no model is trained yet
-
-curl -X POST http://127.0.0.1:8000/predict \
-  -H "Content-Type: application/json" \
-  -d '{"monthly_fee": 29.99, "usage_hours": 42.5, "support_requests": 1,
-       "account_age_months": 18, "failed_payments": 0, "region": "europe",
-       "device_type": "mobile", "payment_method": "card", "autopay_enabled": 1}'
-
-curl -X POST http://127.0.0.1:8000/predict \
-  -H "Content-Type: application/json" \
-  -d '[{"monthly_fee": 29.99, "usage_hours": 42.5, "support_requests": 1,
-        "account_age_months": 18, "failed_payments": 0, "region": "europe",
-        "device_type": "mobile", "payment_method": "card", "autopay_enabled": 1},
-       {"monthly_fee": 59.99, "usage_hours": 3.0, "support_requests": 6,
-        "account_age_months": 2, "failed_payments": 3, "region": "asia",
-        "device_type": "desktop", "payment_method": "crypto", "autopay_enabled": 0}]'
-```
-
-Answer to the list from the model trained without class weights (probabilities rounded):
-
-```json
-[
-  {"churn": 0, "probability_no_churn": 0.957, "probability_churn": 0.043},
-  {"churn": 1, "probability_no_churn": 0.189, "probability_churn": 0.811}
-]
-```
+A customer carries the nine features of the [dataset table](#dataset-churn_datasetcsv), with the same types and
+accepted values, but no `churn` and no missing value. A field not in the table, `churn` included, gets `422`, so a
+client never believes the model uses a field it ignores.
 
 `churn` is `1` when `probability_churn` is above 0.5. A logistic regression trained with `"class_weight": "balanced"`
-overstates it (`0.164` and `0.942` for the same customers), so read it as a risk score rather than the real chance of
-leaving.
+overstates it (`0.164` and `0.942` for the customers of [Train and predict](#train-and-predict) instead of `0.043` and
+`0.811`), so read it as a risk score rather than the real chance of leaving.
 
 Before the first training the endpoint answers `503`; invalid customers and an empty list get `422`. The answers are
 shown in [Errors](#errors).
+
+`GET /model/schema` lists the features for a client to build requests from. They come in the order the model is
+trained on them, each with its `kind` (`numeric`, `binary` or `categorical`), JSON Schema `type`, `allowed_values` and
+`minimum`; it answers before the first training too.
+
+```json
+{"features": [
+  {"name": "monthly_fee", "kind": "numeric", "type": "number", "allowed_values": null, "minimum": 0},
+  ...
+  {"name": "autopay_enabled", "kind": "binary", "type": "integer", "allowed_values": [0, 1], "minimum": null},
+  {"name": "region", "kind": "categorical", "type": "string", "allowed_values": ["europe", "asia", "america", "africa"], "minimum": null},
+  ...
+]}
+```
 
 How it works: [docs/prediction.md](docs/prediction.md). The models, their hyperparameters and tuning:
 [docs/model_training.md](docs/model_training.md).
@@ -611,9 +678,10 @@ make test
 # or manually
 pip install -r requirements-dev.txt
 pytest                      # all tests
-pytest tests/unit           # schemas and dataset service
+pytest tests/unit           # schemas, the ml pipeline and every service on its own
 pytest tests/integration    # HTTP API via httpx.AsyncClient and the whole pipeline via TestClient
 ruff check .
+ruff format --check .
 ```
 
 `tests/integration/test_churn_pipeline.py` runs the whole scenario through `fastapi.testclient.TestClient`: the app
