@@ -539,9 +539,17 @@ make test
 pip install -r requirements-dev.txt
 pytest                      # all tests
 pytest tests/unit           # schemas and dataset service
-pytest tests/integration    # HTTP API via httpx.AsyncClient
+pytest tests/integration    # HTTP API via httpx.AsyncClient and the whole pipeline via TestClient
 ruff check .
 ```
+
+`tests/integration/test_churn_pipeline.py` runs the whole scenario through `fastapi.testclient.TestClient`: the app
+starts with its lifespan, reads a CSV from disk, trains via `/model/train`, reports via `/model/status` and predicts via
+`/predict`, including the errors on the way (prediction without a model, a failed training, a missing or single-class
+dataset). It reads `tests/data/churn_sample.csv`, 150 rows of the bundled dataset stratified by churn
+(`train_test_split(df, train_size=150, stratify=df["churn"], random_state=42)`), so it is fast and gives the same
+result on every run. Models and the training history trained by the tests go to a temporary directory, never to
+`models/`.
 
 ## Project layout
 
@@ -556,6 +564,7 @@ src/
 ├── services/          # dataset loading, statistics, preprocessing, train/test split, model training, storage, training history and prediction
 └── schemas/           # Pydantic models of features, dataset rows and responses
 tests/
+├── data/              # fixed 150-row sample of the dataset for the pipeline tests
 ├── unit/
 └── integration/
 docs/                  # notes on the underlying concepts
