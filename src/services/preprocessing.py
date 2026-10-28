@@ -163,3 +163,8 @@ def get_split() -> SplitData:
     # Checked once here rather than on every /dataset/split-info request, since the split is cached.
     check_class_shares(info)
     return split
+
+
+def is_dataset_trainable() -> bool:
+    """Whether get_split() has split the dataset, without trying to; a failed split is not cached, as in get_dataset()."""
+    return get_split.cache_info().currsize > 0
