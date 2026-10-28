@@ -6,7 +6,7 @@ MODELS_VOLUME := churn-models
 # Settings from .env, if it exists: uvicorn and docker run take the same flag.
 ENV_FILE := $(if $(wildcard .env),--env-file .env)
 
-.PHONY: install run test docker-build docker-run
+.PHONY: install run test lint docker-build docker-run
 
 install:
 	python3 -m venv $(VENV)
@@ -17,6 +17,10 @@ run:
 
 test:
 	$(BIN)/pytest
+
+lint:
+	$(BIN)/ruff check .
+	$(BIN)/ruff format --check .
 
 docker-build:
 	docker build -t $(IMAGE) .

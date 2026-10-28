@@ -673,7 +673,8 @@ Why these statuses and this format: [docs/error_handling.md](docs/error_handling
 ## Tests
 
 ```bash
-make test
+make test   # all tests
+make lint   # ruff check and ruff format --check
 
 # or manually
 pip install -r requirements-dev.txt
