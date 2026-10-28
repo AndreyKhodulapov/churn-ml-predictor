@@ -124,7 +124,8 @@ def describe_hyperparameters(pipeline: Pipeline, model_type: ModelType, requeste
 def evaluate_churn_model(pipeline: Pipeline, X_test: pd.DataFrame, y_test: pd.Series) -> TrainMetrics:
     """Accuracy, F1 of the churn class and ROC-AUC of the churn probability on the test part.
 
-    The stratified split leaves both churn classes in the test part, which ROC-AUC needs.
+    ROC-AUC needs both churn classes in the test part: split_data() refuses a split without them
+    (check_split_classes()), since a stratified split of a tiny dataset may leave the rarer class out.
     """
     predictions = pipeline.predict(X_test)
     # Classes are sorted, so the second column is the probability of churn = 1.

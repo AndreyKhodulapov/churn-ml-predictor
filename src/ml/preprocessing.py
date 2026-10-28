@@ -99,6 +99,21 @@ def check_trainable(y: pd.Series) -> None:
         raise DatasetNotTrainableError(f"Dataset has only churn class {y.iloc[0]}, a classifier needs both")
 
 
+def check_split_classes(split: SplitData) -> None:
+    """Reject a split that leaves a churn class out of the train or the test part.
+
+    A stratified split keeps the class shares, but on a tiny dataset the share of the rarer class in the test part
+    rounds down to no rows at all: 2 of 10 rows give a 2-row test part with 0.4 of a churner. scikit-learn only
+    checks that the test part can hold as many rows as there are classes. Without both classes the model cannot
+    be trained on the train part, and on the test part ROC-AUC is NaN and F1 meaningless.
+    """
+    for part, y in (("train", split.y_train), ("test", split.y_test)):
+        if y.nunique() < 2:
+            raise DatasetNotTrainableError(
+                f"The {part} part has only churn class {y.iloc[0]}, both are needed; add rows of the other class"
+            )
+
+
 def split_data(prepared: PreparedData) -> SplitData:
     """Split into train and test keeping the churn share of the whole dataset in both parts; gaps stay as they are."""
     check_trainable(prepared.y)
@@ -113,4 +128,6 @@ def split_data(prepared: PreparedData) -> SplitData:
     except ValueError as e:
         # Too few rows of a class or too few for the test part to hold every class; sklearn names which.
         raise DatasetNotTrainableError(str(e)) from e
-    return SplitData(*parts)
+    split = SplitData(*parts)
+    check_split_classes(split)
+    return split

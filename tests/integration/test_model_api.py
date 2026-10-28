@@ -367,6 +367,21 @@ async def test_train_answers_409_on_single_class_dataset(client, serve_csv, csv_
     }
 
 
+async def test_train_answers_409_when_the_test_part_gets_no_churner(client, serve_csv, csv_header, make_csv_row):
+    # 2 churners of 10 rows: the 2-row test part gets none of them, and ROC-AUC would be NaN.
+    serve_csv("\n".join([csv_header, *[make_csv_row(0)] * 8, *[make_csv_row(1)] * 2]) + "\n")
+
+    response = await client.post("/model/train")
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "code": "dataset_not_trainable",
+        "message": "Dataset cannot be used for training: The test part has only churn class 0, both are needed; "
+        "add rows of the other class",
+        "details": None,
+    }
+
+
 async def test_train_answers_409_on_dataset_without_labels(client, serve_csv, csv_header, make_csv_row):
     unlabeled = make_csv_row(0).removesuffix("0")
     serve_csv(f"{csv_header}\n{unlabeled}\n{unlabeled}\n")

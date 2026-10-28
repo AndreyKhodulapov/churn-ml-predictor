@@ -6,7 +6,7 @@ import pytest
 
 from src.core.config import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURES, NUMERIC_FEATURES, TARGET_COLUMN
 from src.core.exceptions import DatasetNotTrainableError
-from src.ml.preprocessing import PreparedData, build_imputer, prepare_data, split_data
+from src.ml.preprocessing import PreparedData, SplitData, build_imputer, check_split_classes, prepare_data, split_data
 from src.schemas.dataset import ClassDistribution, DatasetRowChurn, SplitDataInfo
 from src.schemas.prediction import FeatureVectorChurn
 from src.services.dataset import DatasetProcessor
@@ -156,6 +156,9 @@ def test_split_data_keeps_feature_gaps(prepared):
         ([0] * 9 + [1], "least populated classes in y have only 1 member"),
         # 20% of 4 rows is a 1-row test part, which cannot hold both classes.
         ([0, 0, 1, 1], "test_size = 1 should be greater or equal to the number of classes = 2"),
+        # 20% of 10 rows is a 2-row test part; 20% of 2 churners rounds down to none of them in it, which sklearn
+        # accepts, so the split is checked afterwards: ROC-AUC on one class would be NaN.
+        ([0] * 8 + [1] * 2, "The test part has only churn class 0, both are needed; add rows of the other class"),
     ],
 )
 def test_split_data_rejects_dataset_it_cannot_split_for_training(make_df, labels, reason):
@@ -163,6 +166,15 @@ def test_split_data_rejects_dataset_it_cannot_split_for_training(make_df, labels
 
     with pytest.raises(DatasetNotTrainableError, match=re.escape(reason)):
         split_data(prepared)
+
+
+def test_check_split_classes_rejects_a_part_with_one_class(prepared):
+    split = split_data(prepared)
+    only_stayed = split.y_train[split.y_train == 0]
+    broken = SplitData(split.X_train.loc[only_stayed.index], split.X_test, only_stayed, split.y_test)
+
+    with pytest.raises(DatasetNotTrainableError, match="The train part has only churn class 0"):
+        check_split_classes(broken)
 
 
 def test_split_data_accepts_smallest_dataset_with_both_classes_in_both_parts(make_df):

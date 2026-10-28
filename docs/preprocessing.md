@@ -84,9 +84,14 @@ from.
   `LogisticRegression.fit` fails later with "needs samples of at least 2
   classes". So it is rejected explicitly.
 - Stratification adds two more limits: every class needs at least 2 rows, and
-  the test part (20%, rounded up) must hold at least one row of every class.
-  With two classes that means at least 6 rows. scikit-learn's own messages
-  name the exact reason, so they are passed through.
+  the test part (20%, rounded up) must hold at least as many rows as there are
+  classes. With two classes that means at least 6 rows. scikit-learn's own
+  messages name the exact reason, so they are passed through.
+- scikit-learn does not check that every class actually lands in the test
+  part: with 2 churners of 10 rows the 2-row test part gets 0.4 of a churner,
+  rounded down to none. ROC-AUC on a single class is NaN, so the split is
+  checked afterwards (`check_split_classes`) and refused unless both parts
+  hold both classes.
 - The API answers `409 Conflict` with the reason: the request is valid, but
   the current data does not allow it. `/dataset/info` still describes such a
   dataset, since describing it needs no split.
