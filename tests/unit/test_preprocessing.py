@@ -186,6 +186,16 @@ def test_get_split_splits_default_dataset_once():
     assert get_split() is split
 
 
+def test_get_split_logs_sizes_of_both_parts(caplog):
+    # Cleared to split again: an earlier test may have cached the split, and only splitting logs.
+    get_split.cache_clear()
+
+    with caplog.at_level(logging.INFO):
+        get_split()
+
+    assert "Split the dataset into 1600 train and 400 test rows" in caplog.text
+
+
 def test_describe_split_reports_sizes_and_distributions(prepared):
     info = describe_split(split_data(prepared))
 

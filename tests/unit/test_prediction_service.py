@@ -1,3 +1,4 @@
+import logging
 from typing import get_args
 
 import pandas as pd
@@ -105,6 +106,15 @@ def test_reports_failure_of_the_pipeline_as_prediction_error(model, make_custome
 
 def test_returns_no_predictions_for_no_customers(model):
     assert predict_churn(model, []) == []
+
+
+def test_logs_batch_size_and_churners_but_not_the_features(model, make_customer, caplog):
+    with caplog.at_level(logging.INFO):
+        predict_churn(model, [make_customer(0), make_customer(5), make_customer(5)])
+
+    assert "Predicted churn of 3 customers" in caplog.text
+    assert f"2 of them churn; logreg model trained at {model.trained_at.isoformat()}" in caplog.text
+    assert "europe" not in caplog.text
 
 
 def test_refuses_without_trained_model(make_customer):

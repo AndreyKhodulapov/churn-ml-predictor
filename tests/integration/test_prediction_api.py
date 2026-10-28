@@ -29,6 +29,13 @@ async def test_predict_answers_503_without_trained_model(client, customer_featur
     assert response.json() == MODEL_NOT_TRAINED_ERROR
 
 
+async def test_predict_logs_a_request_before_training(client, customer_features, caplog):
+    with caplog.at_level(logging.WARNING):
+        await client.post("/predict", json=customer_features)
+
+    assert "POST /predict answered before a churn model is trained" in caplog.text
+
+
 @pytest.fixture
 def broken_model(trained_client, model_store, monkeypatch):
     def broken_predict_proba(X):

@@ -158,6 +158,8 @@ def get_split() -> SplitData:
     Feature gaps are kept: the churn pipeline fills them with statistics of the train part.
     """
     split = split_data(prepare_data(get_dataset().get_dataframe()))
+    info = describe_split(split)
+    logger.info("Split the dataset into %d train and %d test rows", info.train_size, info.test_size)
     # Checked once here rather than on every /dataset/split-info request, since the split is cached.
-    check_class_shares(describe_split(split))
+    check_class_shares(info)
     return split

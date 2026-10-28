@@ -39,6 +39,15 @@ async def test_unhandled_error_returns_json_500(make_failing_client):
     assert response.json() == {"code": "internal_error", "message": "Internal server error", "details": None}
 
 
+async def test_unhandled_error_logs_the_request(make_failing_client, caplog):
+    client = await make_failing_client(RuntimeError("Broken state in /secret/path.csv"))
+
+    with caplog.at_level(logging.ERROR):
+        await client.get("/dataset/preview")
+
+    assert "GET /dataset/preview failed with an unhandled RuntimeError" in caplog.text
+
+
 async def test_unhandled_error_hides_exception_details(make_failing_client):
     client = await make_failing_client(RuntimeError("Broken state in /secret/path.csv"))
 
@@ -76,6 +85,17 @@ async def test_validation_error_does_not_echo_the_input(client, customer_feature
 
     assert response.status_code == 422
     assert "antarctica" not in response.text
+
+
+async def test_validation_error_is_logged_without_the_input(client, customer_features, caplog):
+    customer_features["region"] = "antarctica"
+
+    with caplog.at_level(logging.WARNING):
+        await client.post("/predict", json=[customer_features, customer_features])
+
+    assert "POST /predict failed validation with 2 errors" in caplog.text
+    assert "first at body.list[FeatureVectorChurn].0.region: literal_error" in caplog.text
+    assert "antarctica" not in caplog.text
 
 
 async def test_invalid_json_returns_validation_error(client):

@@ -1,3 +1,5 @@
+import logging
+import time
 from typing import Literal
 
 import pandas as pd
@@ -7,6 +9,8 @@ from src.core.constants import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURES
 from src.core.exceptions import ModelNotTrainedError, PredictionError
 from src.schemas.prediction import FeatureDescription, FeatureSchemaChurn, FeatureVectorChurn, PredictionResponseChurn
 from src.services.model_storage import TrainedChurnModel, check_model_features
+
+logger = logging.getLogger(__name__)
 
 
 def build_model_input(pipeline: Pipeline, customers: list[FeatureVectorChurn]) -> pd.DataFrame:
@@ -30,6 +34,7 @@ def predict_churn(
         # /predict refuses an empty batch, but for the service no customers simply means no predictions,
         # while sklearn refuses an empty DataFrame.
         return []
+    started = time.perf_counter()
     try:
         # The pipeline picks columns by name, so it needs a DataFrame like the one it was fitted on, not schema objects.
         X = build_model_input(model.pipeline, customers)
@@ -39,6 +44,15 @@ def predict_churn(
     # The customers have passed validation, so whatever fails here is a fault of the model, not of the request.
     except Exception as e:
         raise PredictionError(f"Churn model failed to predict, batch size {len(customers)}: {e}") from e
+    # Counts only: the features describe customers and a batch may hold thousands of them.
+    logger.info(
+        "Predicted churn of %d customers in %.3fs, %d of them churn; %s model trained at %s",
+        len(customers),
+        time.perf_counter() - started,
+        int(predicted_classes.sum()),
+        model.model_type,
+        model.trained_at.isoformat(),
+    )
     return [
         PredictionResponseChurn(churn=churn, probability_no_churn=proba[0], probability_churn=proba[1])
         for churn, proba in zip(predicted_classes, probabilities, strict=True)

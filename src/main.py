@@ -1,4 +1,5 @@
 import logging
+import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -31,7 +32,10 @@ from src.services.model_storage import get_model_store
 from src.services.preprocessing import get_split
 from src.services.training_history import get_training_history
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+# Read from the environment, so a container can be started at DEBUG without rebuilding the image.
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO").upper(), format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 

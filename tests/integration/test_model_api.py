@@ -270,6 +270,13 @@ async def test_train_answers_422_on_hyperparameters_the_model_refuses(client, mo
     assert load_churn_model(model_store.path).trained_at == trained.trained_at
 
 
+async def test_train_logs_hyperparameters_the_model_refuses(client, caplog):
+    with caplog.at_level(logging.WARNING):
+        await client.post("/model/train", json={"hyperparameters": {"n_estimators": 10}})
+
+    assert "POST /model/train refused: Unknown hyperparameters of logreg: n_estimators" in caplog.text
+
+
 async def test_openapi_shows_train_errors(documented_errors):
     assert documented_errors("post", "/model/train", 409) == {"no_labeled_rows": NO_LABELED_ROWS_ERROR}
     assert documented_errors("post", "/model/train", 422) == {

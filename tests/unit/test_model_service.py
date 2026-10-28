@@ -72,6 +72,17 @@ def test_failed_training_keeps_the_previous_model(separable_split, store, histor
     assert load_churn_model(store.path).trained_at == trained.trained_at
 
 
+def test_logs_the_training_with_its_hyperparameters_and_metrics(separable_split, store, history, caplog):
+    config = TrainingConfigChurn(hyperparameters={"C": 0.5})
+
+    with caplog.at_level(logging.INFO):
+        train_and_save_churn_model(separable_split, config, store, history)
+
+    assert "Training logreg with hyperparameters {'C': 0.5}" in caplog.text
+    assert f"serving the model trained at {store.model.trained_at.isoformat()}" in caplog.text
+    assert "accuracy=1.0000 f1=1.0000 roc_auc=1.0000" in caplog.text
+
+
 def test_records_every_training_with_values_of_its_hyperparameters(separable_split, store, history):
     train_and_save_churn_model(separable_split, TrainingConfigChurn(), store, history)
     config = TrainingConfigChurn(model_type="random_forest", hyperparameters={"n_estimators": 10})
@@ -142,3 +153,11 @@ def test_tuning_uses_the_train_part_only(separable_split):
     result = tune_churn_model_on_split(split, TuningConfigChurn(param_grid={"C": [0.1, 1.0]}, cv=3))
 
     assert result.best_score == 1.0
+
+
+def test_logs_the_tuning_with_the_best_combination(separable_split, caplog):
+    with caplog.at_level(logging.INFO):
+        tune_churn_model_on_split(separable_split, TuningConfigChurn(param_grid={"C": [0.1, 1.0]}, cv=3))
+
+    assert "Tuning logreg by f1 with 3-fold cross-validation over grid {'C': [0.1, 1.0]}" in caplog.text
+    assert "best f1=1.0000 with {'C': 0.1}" in caplog.text
