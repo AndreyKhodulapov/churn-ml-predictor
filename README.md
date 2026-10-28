@@ -9,13 +9,15 @@ dataset, trains a logistic regression or a random forest on it with the
 requested hyperparameters, finds the best hyperparameters by grid search,
 keeps the trained model on disk across restarts, records the test metrics of
 every training to compare configs and predicts churn of new customers with
-the model.
+the model. It reports its readiness at `/health`, logs the key events and runs
+in a Docker container.
 
 ## Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/` | health message |
+| GET | `/health` | whether the dataset is loaded and can be trained on and a model is served; always `200`, `status` is `ok` or `degraded` |
 | POST | `/predict` | predict churn of one customer or a list of them: class and probabilities of both classes; `503` until a model is trained |
 | GET | `/dataset/preview?n=5` | first `n` rows of the training dataset, `1 <= n <= 100` |
 | GET | `/dataset/info` | row and column counts, feature names, churn class distribution |
@@ -97,6 +99,7 @@ uvicorn src.main:app --reload
 Then open:
 
 - http://127.0.0.1:8000/ - health message
+- http://127.0.0.1:8000/health - what the service can do right now
 - http://127.0.0.1:8000/docs - interactive API docs (Swagger UI)
 
 Example requests:
@@ -151,6 +154,34 @@ and its shares, taken over all rows, sum to less than 1 when such rows exist.
   }
 }
 ```
+
+## Run in Docker
+
+```bash
+make docker-build   # build the churn-ml-predictor image
+make docker-run     # start it on port 8000, keeping models/ in the churn-models volume
+```
+
+Without make:
+
+```bash
+docker build -t churn-ml-predictor .
+docker run --rm --name churn-ml-predictor -p 8000:8000 -v churn-models:/app/models churn-ml-predictor
+```
+
+The service answers at the same addresses as above, http://127.0.0.1:8000/health and http://127.0.0.1:8000/docs.
+
+- The image holds the runtime dependencies, `src/` and `data/` only; dev dependencies, tests and `models/` stay out.
+- The trained model and the training history go to the named volume `churn-models` mounted on `/app/models`, so a
+  new container serves the model the previous one trained. Without `-v` they are lost with the container.
+  `docker volume rm churn-models` starts from scratch.
+- Logs go to `docker logs churn-ml-predictor`; `-e LOG_LEVEL=DEBUG` on `docker run` changes their level.
+- A `HEALTHCHECK` calls `/health` every 30 seconds; `docker ps` shows the container as `healthy` once the service
+  answers, with or without a trained model.
+- The service runs as a non-root user, in one uvicorn process: the served model lives in the memory of the process,
+  so a model trained by one of several workers would not reach the others.
+
+Why the image is built this way: [docs/docker.md](docs/docker.md).
 
 ## Training config
 
@@ -407,6 +438,42 @@ shown in [Errors](#errors).
 How it works: [docs/prediction.md](docs/prediction.md). The models, their hyperparameters and tuning:
 [docs/model_training.md](docs/model_training.md).
 
+## Health and logs
+
+`GET /health` reports what the service can do right now:
+
+```json
+{"status": "degraded", "dataset_loaded": true, "dataset_trainable": true, "model_available": false}
+```
+
+| Field | `false` means |
+|-------|---------------|
+| `dataset_loaded` | the dataset is missing or broken: the `/dataset` endpoints answer `503` |
+| `dataset_trainable` | the dataset is not loaded or cannot be split for training: `/model/train` and `/model/tune` answer `503` or `409` |
+| `model_available` | no model is trained yet: `/predict` answers `503` |
+
+`status` is `ok` when all three are `true` and `degraded` otherwise. The answer is `200` either way: a service
+without a model is up and can train one, so a healthcheck must not restart it. The check loads nothing, it reads the
+state the service already holds; a dataset that failed to load is retried by the next request that needs it.
+
+The service logs to stderr, at the level of the `LOG_LEVEL` environment variable (`INFO` by default):
+
+- loading and splitting the dataset at startup, and why it failed;
+- every training and tuning: the config, the duration and the metrics;
+- every prediction: the batch size, the duration, how many customers churn and which model answered (its type and
+  `trained_at`, as in `/model/status`);
+- handled errors: validation errors (where and which check only), refused hyperparameters, predictions before
+  training, model failures with their traceback and the request of every unhandled error.
+
+```
+INFO src.services.model: Trained logreg in 0.09s, serving the model trained at 2026-10-28T08:01:18.706309+00:00: accuracy=0.5875 f1=0.3478 roc_auc=0.6110
+INFO src.services.prediction: Predicted churn of 1 customers in 0.026s, 1 of them churn; logreg model trained at 2026-10-28T08:01:18.706309+00:00
+WARNING src.core.error_handlers: POST /predict failed validation with 9 errors, first at body.FeatureVectorChurn.monthly_fee: missing
+```
+
+Feature values never reach the log, neither of predicted customers nor of invalid requests. What is logged and why:
+[docs/monitoring.md](docs/monitoring.md).
+
 ## Errors
 
 Every error answers with the same JSON body, whatever the status: `code` names the error for a client to branch on,
@@ -554,6 +621,7 @@ result on every run. Models and the training history trained by the tests go to 
 ## Project layout
 
 ```
+Dockerfile             # image of the service, see Run in Docker
 data/
 └── churn_dataset.csv  # training dataset
 models/                # trained model and training history saved by /model/train, not tracked by git
@@ -561,7 +629,7 @@ src/
 ├── main.py            # FastAPI app, startup, router registration
 ├── core/              # constants, /docs examples, exceptions, error handlers
 ├── routers/           # HTTP endpoints
-├── services/          # dataset loading, statistics, preprocessing, train/test split, model training, storage, training history and prediction
+├── services/          # dataset loading, statistics, preprocessing, train/test split, model training, storage, training history, prediction and health
 └── schemas/           # Pydantic models of features, dataset rows and responses
 tests/
 ├── data/              # fixed 150-row sample of the dataset for the pipeline tests
