@@ -24,6 +24,7 @@ from src.main import app, lifespan
 from src.services.dataset import DatasetProcessor
 from src.services.model_storage import get_model_store, load_churn_model
 from src.services.preprocessing import SplitData, get_split
+from src.services.training_history import get_training_history, load_history
 
 
 @pytest.fixture
@@ -422,6 +423,62 @@ async def test_startup_survives_damaged_model_file(client, model_store, caplog):
     assert status["trained"] is False
     assert retrained.status_code == 200
     assert load_churn_model(model_store.path).metrics.model_dump() == retrained.json()
+
+
+async def test_train_records_the_training_as_status_reports_it(client, training_history):
+    await client.post("/model/train")
+    config = {"model_type": "random_forest", "hyperparameters": {"n_estimators": 20, "class_weight": {"0": 1, "1": 4}}}
+    await client.post("/model/train", json=config)
+    status = (await client.get("/model/status")).json()
+
+    newest, oldest = training_history.records()
+    assert newest.model_dump(mode="json") == {key: status[key] for key in newest.model_dump()}
+    assert oldest.model_type == "logreg"
+
+
+async def test_failed_training_leaves_no_record(client, training_history):
+    await client.post("/model/train", json={"hyperparameters": {"C": 0}})
+
+    assert training_history.records() == []
+
+
+async def test_recorded_config_trains_the_same_model_again(client, training_history):
+    config = {"model_type": "random_forest", "hyperparameters": {"n_estimators": 20, "max_depth": 5}}
+    metrics = (await client.post("/model/train", json=config)).json()
+    record = training_history.records()[0]
+
+    again = await client.post(
+        "/model/train", json=record.model_dump(mode="json", include={"model_type", "hyperparameters"})
+    )
+
+    assert again.json() == metrics
+
+
+async def test_training_history_survives_restart(client, training_history):
+    await client.post("/model/train")
+    await client.post("/model/train", json={"hyperparameters": {"class_weight": "balanced"}})
+
+    # A restarted process begins with an empty history; the lifespan fills it from the saved file.
+    get_training_history.cache_clear()
+    async with lifespan(app):
+        restarted = get_training_history()
+
+    assert restarted is not training_history
+    assert restarted.records() == training_history.records()
+
+
+async def test_startup_survives_damaged_history_file(client, training_history, caplog):
+    training_history.path.parent.mkdir(parents=True)
+    training_history.path.write_text("not json")
+
+    with caplog.at_level(logging.WARNING):
+        async with lifespan(app):
+            retrained = await client.post("/model/train")
+
+    assert "Starting with an empty training history: Cannot read training history" in caplog.text
+    assert retrained.status_code == 200
+    # The training writes a new history over the damaged file.
+    assert [record.metrics.model_dump() for record in load_history(training_history.path)] == [retrained.json()]
 
 
 @pytest.fixture

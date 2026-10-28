@@ -5,6 +5,7 @@ from src.main import app
 from src.services.dataset import DatasetProcessor, get_dataset
 from src.services.model_storage import ChurnModelStore, get_model_store
 from src.services.preprocessing import get_split
+from src.services.training_history import TrainingHistory, get_training_history
 
 
 @pytest.fixture(autouse=True)
@@ -17,6 +18,15 @@ def model_store(tmp_path, monkeypatch) -> ChurnModelStore:
     get_model_store.cache_clear()
     yield get_model_store()
     get_model_store.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def training_history(tmp_path, monkeypatch) -> TrainingHistory:
+    """Point the service history at a temporary file, for the same reason as model_store."""
+    monkeypatch.setattr("src.services.training_history.HISTORY_PATH", tmp_path / "models" / "training_history.json")
+    get_training_history.cache_clear()
+    yield get_training_history()
+    get_training_history.cache_clear()
 
 
 @pytest.fixture

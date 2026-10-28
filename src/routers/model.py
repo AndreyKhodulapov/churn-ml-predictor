@@ -9,6 +9,7 @@ from src.services.model import train_and_save_churn_model, tune_churn_model_on_s
 from src.services.model_storage import ChurnModelStore, get_model_store
 from src.services.prediction import describe_features
 from src.services.preprocessing import SplitData, get_split
+from src.services.training_history import TrainingHistory, get_training_history
 
 router = APIRouter(tags=["Model"], prefix="/model")
 
@@ -23,6 +24,7 @@ router = APIRouter(tags=["Model"], prefix="/model")
 def train_model(
     split: Annotated[SplitData, Depends(get_split)],
     store: Annotated[ChurnModelStore, Depends(get_model_store)],
+    history: Annotated[TrainingHistory, Depends(get_training_history)],
     # Without a body the service trains logreg with the scikit-learn defaults.
     config: Annotated[TrainingConfigChurn, Body(default_factory=TrainingConfigChurn, openapi_examples=TRAIN_EXAMPLES)],
 ) -> TrainMetrics:
@@ -36,7 +38,7 @@ def train_model(
     Answers `422` when the model does not know a hyperparameter or refuses its value, `409` when the dataset cannot be
     trained on and `503` while it is not available. A failed training keeps the previous model.
     """
-    return train_and_save_churn_model(split, config, store)
+    return train_and_save_churn_model(split, config, store, history)
 
 
 # A plain def for the same reason as /train: the grid search fits one model per combination and fold.

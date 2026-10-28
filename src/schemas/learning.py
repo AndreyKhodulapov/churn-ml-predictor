@@ -21,6 +21,13 @@ def restore_class_labels(class_weight: Any) -> Any:
     }
 
 
+def restore_class_weight_labels(hyperparameters: dict[str, Any]) -> dict[str, Any]:
+    """hyperparameters with restore_class_labels() applied to class_weight, if there is one."""
+    if "class_weight" not in hyperparameters:
+        return hyperparameters
+    return {**hyperparameters, "class_weight": restore_class_labels(hyperparameters["class_weight"])}
+
+
 class TrainingConfigChurn(BaseSchema):
     """Which churn model to train and the hyperparameters set over its scikit-learn defaults."""
 
@@ -34,9 +41,7 @@ class TrainingConfigChurn(BaseSchema):
     @field_validator("hyperparameters")
     @classmethod
     def restore_class_weight_labels(cls, hyperparameters: dict[str, Any]) -> dict[str, Any]:
-        if "class_weight" not in hyperparameters:
-            return hyperparameters
-        return {**hyperparameters, "class_weight": restore_class_labels(hyperparameters["class_weight"])}
+        return restore_class_weight_labels(hyperparameters)
 
 
 class TrainMetrics(BaseSchema):
@@ -60,6 +65,24 @@ class ModelStatus(BaseSchema):
     model_type: ModelType | None = None
     # The main hyperparameters of model_type and every requested one, with the values the model was trained with.
     hyperparameters: dict[str, Any] | None = None
+
+
+class TrainingRecord(BaseSchema):
+    """One successful /model/train: when it ran, what it trained and how the model scored on the test part."""
+
+    trained_at: datetime
+    model_type: ModelType
+    # The main hyperparameters of model_type and every requested one, with the values the model was trained with,
+    # so records compare by values whether a default was sent or not. With model_type they are a /model/train body
+    # that trains the same model again.
+    hyperparameters: dict[str, Any]
+    metrics: TrainMetrics
+
+    # The history file is JSON, so class_weight keys come back from it as strings.
+    @field_validator("hyperparameters")
+    @classmethod
+    def restore_class_weight_labels(cls, hyperparameters: dict[str, Any]) -> dict[str, Any]:
+        return restore_class_weight_labels(hyperparameters)
 
 
 class TuningConfigChurn(BaseSchema):

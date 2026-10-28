@@ -61,3 +61,6 @@ DATA_DIR = PROJECT_ROOT / "data"
 DATASET_PATH = DATA_DIR / "churn_dataset.csv"
 MODELS_DIR = PROJECT_ROOT / "models"
 MODEL_PATH = MODELS_DIR / "churn_model.joblib"
+HISTORY_PATH = MODELS_DIR / "training_history.json"
+# Records the history keeps: the oldest ones are dropped, so the file and every rewrite of it stay small.
+MAX_HISTORY_RECORDS = 100
