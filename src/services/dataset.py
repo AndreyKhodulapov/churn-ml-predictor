@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 from pydantic import ValidationError
 
-from src.core.constants import DATASET_PATH, TARGET_COLUMN
+from src.core.config import DATASET_PATH, TARGET_COLUMN
 from src.core.exceptions import DatasetLoadError
 from src.schemas.dataset import ClassDistribution, DatasetInfo, DatasetRowChurn
 from src.services.utils import class_distribution

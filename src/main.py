@@ -1,5 +1,4 @@
 import logging
-import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -7,6 +6,8 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 
+from src.api import dataset, health, model, prediction
+from src.core.config import LOG_LEVEL
 from src.core.error_handlers import (
     dataset_not_trainable_handler,
     dataset_unavailable_handler,
@@ -26,16 +27,12 @@ from src.core.exceptions import (
     ModelNotTrainedError,
     PredictionError,
 )
-from src.routers import dataset, health, model, prediction
 from src.services.dataset import get_dataset
 from src.services.model_storage import get_model_store
-from src.services.preprocessing import get_split
+from src.services.split import get_split
 from src.services.training_history import get_training_history
 
-# Read from the environment, so a container can be started at DEBUG without rebuilding the image.
-logging.basicConfig(
-    level=os.environ.get("LOG_LEVEL", "INFO").upper(), format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-)
+logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 

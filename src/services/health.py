@@ -1,7 +1,7 @@
 from src.schemas.health import HealthStatus
 from src.services.dataset import is_dataset_loaded
 from src.services.model_storage import ChurnModelStore
-from src.services.preprocessing import is_dataset_trainable
+from src.services.split import is_dataset_trainable
 
 
 def check_health(store: ChurnModelStore) -> HealthStatus:

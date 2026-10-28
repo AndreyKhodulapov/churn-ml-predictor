@@ -1,10 +1,10 @@
 import logging
 import time
 
+from src.ml.learning import evaluate_churn_model, train_churn_model, tune_churn_model
+from src.ml.preprocessing import SplitData
 from src.schemas.learning import TrainingConfigChurn, TrainMetrics, TuningConfigChurn, TuningResultChurn
-from src.services.learning import evaluate_churn_model, train_churn_model, tune_churn_model
 from src.services.model_storage import ChurnModelStore, TrainedChurnModel
-from src.services.preprocessing import SplitData
 from src.services.training_history import TrainingHistory, describe_training
 
 logger = logging.getLogger(__name__)

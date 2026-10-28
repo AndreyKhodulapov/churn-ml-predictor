@@ -2,7 +2,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import ConfigDict, Discriminator, Field, Tag
 
-from src.core.constants import DeviceType, PaymentMethod, Region
+from src.core.config import DeviceType, PaymentMethod, Region
 from src.schemas.base import BaseSchema
 
 

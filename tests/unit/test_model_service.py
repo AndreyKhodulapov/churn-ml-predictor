@@ -5,10 +5,10 @@ import pandas as pd
 import pytest
 
 from src.core.exceptions import InvalidHyperparametersError
+from src.ml.preprocessing import SplitData
 from src.schemas.learning import TrainingConfigChurn, TrainingRecord, TrainMetrics, TuningConfigChurn
 from src.services.model import train_and_save_churn_model, tune_churn_model_on_split
 from src.services.model_storage import ChurnModelStore, load_churn_model
-from src.services.preprocessing import SplitData
 from src.services.training_history import TrainingHistory, load_history
 
 

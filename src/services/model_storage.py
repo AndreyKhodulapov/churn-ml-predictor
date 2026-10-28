@@ -10,11 +10,11 @@ import joblib
 import sklearn
 from sklearn.pipeline import Pipeline
 
-from src.core.constants import MODEL_PATH, ModelType
+from src.core.config import MODEL_PATH, ModelType
 from src.core.exceptions import ModelFeaturesMismatchError, ModelLoadError
+from src.ml.learning import describe_hyperparameters
 from src.schemas.learning import ModelStatus, TrainMetrics
 from src.schemas.prediction import FeatureVectorChurn
-from src.services.learning import describe_hyperparameters
 
 logger = logging.getLogger(__name__)
 

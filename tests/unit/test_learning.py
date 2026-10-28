@@ -9,10 +9,9 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.utils.validation import check_is_fitted
 
-from src.core.constants import CATEGORICAL_FEATURES, NUMERIC_FEATURES, RANDOM_STATE, TUNING_TOP_CANDIDATES
+from src.core.config import CATEGORICAL_FEATURES, NUMERIC_FEATURES, RANDOM_STATE, TUNING_TOP_CANDIDATES
 from src.core.exceptions import DatasetNotTrainableError, InvalidHyperparametersError
-from src.schemas.learning import TrainingConfigChurn, TrainMetrics, TuningConfigChurn, TuningResultChurn
-from src.services.learning import (
+from src.ml.learning import (
     build_churn_pipeline,
     build_classifier,
     build_feature_transformer,
@@ -21,6 +20,7 @@ from src.services.learning import (
     train_churn_model,
     tune_churn_model,
 )
+from src.schemas.learning import TrainingConfigChurn, TrainMetrics, TuningConfigChurn, TuningResultChurn
 
 
 @pytest.fixture

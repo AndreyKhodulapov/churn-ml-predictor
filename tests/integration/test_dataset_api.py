@@ -2,8 +2,9 @@ import pandas as pd
 import pytest
 
 from src.main import app
+from src.ml.preprocessing import SplitData
 from src.services.dataset import DatasetProcessor, get_dataset
-from src.services.preprocessing import SplitData, get_split
+from src.services.split import get_split
 
 
 @pytest.fixture

@@ -5,7 +5,7 @@ from typing import Literal
 import pandas as pd
 from sklearn.pipeline import Pipeline
 
-from src.core.constants import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURES
+from src.core.config import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURES
 from src.core.exceptions import ModelNotTrainedError, PredictionError
 from src.schemas.prediction import FeatureDescription, FeatureSchemaChurn, FeatureVectorChurn, PredictionResponseChurn
 from src.services.model_storage import TrainedChurnModel, check_model_features

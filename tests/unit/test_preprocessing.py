@@ -4,21 +4,13 @@ import re
 import pandas as pd
 import pytest
 
-from src.core.constants import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURES, NUMERIC_FEATURES, TARGET_COLUMN
+from src.core.config import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURES, NUMERIC_FEATURES, TARGET_COLUMN
 from src.core.exceptions import DatasetNotTrainableError
+from src.ml.preprocessing import PreparedData, build_imputer, prepare_data, split_data
 from src.schemas.dataset import ClassDistribution, DatasetRowChurn, SplitDataInfo
 from src.schemas.prediction import FeatureVectorChurn
 from src.services.dataset import DatasetProcessor
-from src.services.preprocessing import (
-    PreparedData,
-    build_imputer,
-    check_class_shares,
-    describe_split,
-    get_split,
-    is_dataset_trainable,
-    prepare_data,
-    split_data,
-)
+from src.services.split import check_class_shares, describe_split, get_split, is_dataset_trainable
 
 
 @pytest.fixture
@@ -201,7 +193,7 @@ def test_get_split_logs_sizes_of_both_parts(caplog):
 def test_dataset_is_reported_trainable_only_after_a_split_succeeds(write_csv, csv_header, monkeypatch):
     header_only = DatasetProcessor(write_csv(f"{csv_header}\n"))
     header_only.load()
-    monkeypatch.setattr("src.services.preprocessing.get_dataset", lambda: header_only)
+    monkeypatch.setattr("src.services.split.get_dataset", lambda: header_only)
     get_split.cache_clear()
 
     with pytest.raises(DatasetNotTrainableError):

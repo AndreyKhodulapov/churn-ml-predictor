@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import Any, Literal
 
@@ -66,3 +67,6 @@ HISTORY_PATH = MODELS_DIR / "training_history.json"
 MAX_HISTORY_RECORDS = 100
 # Records /model/metrics lists when the client sends no limit.
 DEFAULT_HISTORY_LIMIT = 10
+
+# Read from the environment, so a container can be started at DEBUG without rebuilding the image.
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()

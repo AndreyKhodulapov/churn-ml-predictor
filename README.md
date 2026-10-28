@@ -83,8 +83,9 @@ class share differs between train and test by more than 1 percentage point.
 Requires Python 3.11+.
 
 ```bash
-make install   # create .venv and install dependencies
-make run       # start the service with auto-reload
+make install           # create .venv and install dependencies
+cp .env.example .env   # optional: settings of the service, see Health and logs
+make run               # start the service with auto-reload
 ```
 
 Without make:
@@ -175,7 +176,8 @@ The service answers at the same addresses as above, http://127.0.0.1:8000/health
 - The trained model and the training history go to the named volume `churn-models` mounted on `/app/models`, so a
   new container serves the model the previous one trained. Without `-v` they are lost with the container.
   `docker volume rm churn-models` starts from scratch.
-- Logs go to `docker logs churn-ml-predictor`; `-e LOG_LEVEL=DEBUG` on `docker run` changes their level.
+- Logs go to `docker logs churn-ml-predictor`; `LOG_LEVEL` in `.env` (`make docker-run` passes it) or
+  `-e LOG_LEVEL=DEBUG` on `docker run` changes their level.
 - A `HEALTHCHECK` calls `/health` every 30 seconds; `docker ps` shows the container as `healthy` once the service
   answers, with or without a trained model.
 - The service runs as a non-root user, in one uvicorn process: the served model lives in the memory of the process,
@@ -456,7 +458,11 @@ How it works: [docs/prediction.md](docs/prediction.md). The models, their hyperp
 without a model is up and can train one, so a healthcheck must not restart it. The check loads nothing, it reads the
 state the service already holds; a dataset that failed to load is retried by the next request that needs it.
 
-The service logs to stderr, at the level of the `LOG_LEVEL` environment variable (`INFO` by default):
+The service logs to stderr, at the level of the `LOG_LEVEL` environment variable (`INFO` by default). It is the only
+setting the service reads from the environment: `.env.example` lists it, and `make run` and `make docker-run` pass
+`.env` to the service when it exists. Paths, model grids and limits are fixed in `src/core/config.py`.
+
+The log records:
 
 - loading and splitting the dataset at startup, and why it failed;
 - every training and tuning: the config, the duration and the metrics;
@@ -622,14 +628,16 @@ result on every run. Models and the training history trained by the tests go to 
 
 ```
 Dockerfile             # image of the service, see Run in Docker
+.env.example           # settings read from the environment, copy to .env
 data/
 └── churn_dataset.csv  # training dataset
 models/                # trained model and training history saved by /model/train, not tracked by git
 src/
 ├── main.py            # FastAPI app, startup, router registration
-├── core/              # constants, /docs examples, exceptions, error handlers
-├── routers/           # HTTP endpoints
-├── services/          # dataset loading, statistics, preprocessing, train/test split, model training, storage, training history, prediction and health
+├── api/               # HTTP endpoints
+├── core/              # config, /docs examples, exceptions, error handlers
+├── ml/                # churn pipeline: data preparation, train/test split, training, scoring, tuning
+├── services/          # dataset loading, the cached split, model storage, training history, prediction and health
 └── schemas/           # Pydantic models of features, dataset rows and responses
 tests/
 ├── data/              # fixed 150-row sample of the dataset for the pipeline tests

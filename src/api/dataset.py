@@ -3,9 +3,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from src.core.openapi_examples import DATASET_INFO_RESPONSES, PREVIEW_RESPONSES, SPLIT_INFO_RESPONSES
+from src.ml.preprocessing import SplitData
 from src.schemas.dataset import DatasetInfo, DatasetRowChurn, SplitDataInfo
 from src.services.dataset import DatasetProcessor, get_dataset
-from src.services.preprocessing import SplitData, describe_split, get_split
+from src.services.split import describe_split, get_split
 
 router = APIRouter(tags=["Dataset"], prefix="/dataset")
 

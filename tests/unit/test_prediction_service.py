@@ -4,11 +4,11 @@ from typing import get_args
 import pandas as pd
 import pytest
 
-from src.core.constants import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURES, DeviceType, PaymentMethod, Region
+from src.core.config import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURES, DeviceType, PaymentMethod, Region
 from src.core.exceptions import ModelFeaturesMismatchError, ModelNotTrainedError, PredictionError
+from src.ml.learning import train_churn_model
 from src.schemas.learning import TrainMetrics
 from src.schemas.prediction import FeatureDescription, FeatureVectorChurn
-from src.services.learning import train_churn_model
 from src.services.model_storage import TrainedChurnModel
 from src.services.prediction import build_model_input, describe_features, predict_churn
 

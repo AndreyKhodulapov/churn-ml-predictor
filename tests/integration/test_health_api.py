@@ -1,6 +1,6 @@
 from src.main import app, lifespan
 from src.services.dataset import get_dataset
-from src.services.preprocessing import get_split
+from src.services.split import get_split
 
 
 async def test_health_reports_ok_when_the_dataset_is_ready_and_a_model_is_served(client):
