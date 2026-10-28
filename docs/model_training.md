@@ -200,6 +200,10 @@ is measured and how their hyperparameters are tuned.
   logistic regression has no class weights (cv ROC-AUC 0.669) and test F1
   0.02. Tune by F1 when the churn label is used, by ROC-AUC when customers are
   ranked by risk.
+- `GET /model/metrics` keeps the test metrics of every training to compare
+  the configs actually trained. Choosing among many of them by test metrics
+  overstates the winner, which is why the search itself runs on
+  cross-validation: [training_history.md](training_history.md#comparing-configs).
 
 ## Tuning in production
 
