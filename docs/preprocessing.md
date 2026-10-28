@@ -26,7 +26,7 @@ from.
   feature set stable when a column's dtype changes, for example `int64`
   turning into `float64` after a gap appears.
 - Here the lists are `NUMERIC_FEATURES` and `CATEGORICAL_FEATURES` in
-  `src/core/constants.py`. `BINARY_FEATURES` is not a third group but a
+  `src/core/config.py`. `BINARY_FEATURES` is not a third group but a
   subset of the numeric one: it marks the 0/1 flags, which are filled with the
   most frequent value and passed without scaling.
 

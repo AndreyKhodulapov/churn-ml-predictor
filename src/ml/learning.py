@@ -13,7 +13,7 @@ from sklearn.model_selection import GridSearchCV, ParameterGrid, StratifiedKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-from src.core.constants import (
+from src.core.config import (
     CATEGORICAL_FEATURES,
     CLASSIFIERS,
     MAIN_HYPERPARAMETERS,
@@ -23,6 +23,7 @@ from src.core.constants import (
     ModelType,
 )
 from src.core.exceptions import DatasetNotTrainableError, InvalidHyperparametersError
+from src.ml.preprocessing import build_imputer, split_numeric_features
 from src.schemas.learning import (
     TrainingConfigChurn,
     TrainMetrics,
@@ -30,7 +31,6 @@ from src.schemas.learning import (
     TuningConfigChurn,
     TuningResultChurn,
 )
-from src.services.preprocessing import build_imputer, split_numeric_features
 
 
 def build_feature_transformer(

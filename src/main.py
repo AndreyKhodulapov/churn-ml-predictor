@@ -6,6 +6,8 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
 
+from src.api import dataset, health, model, prediction
+from src.core.config import LOG_LEVEL
 from src.core.error_handlers import (
     dataset_not_trainable_handler,
     dataset_unavailable_handler,
@@ -25,14 +27,28 @@ from src.core.exceptions import (
     ModelNotTrainedError,
     PredictionError,
 )
-from src.routers import dataset, health, model, prediction
 from src.services.dataset import get_dataset
 from src.services.model_storage import get_model_store
-from src.services.preprocessing import get_split
+from src.services.split import get_split
 from src.services.training_history import get_training_history
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
+
+
+def configure_logging(level_name: str) -> None:
+    """Log to stderr at the level LOG_LEVEL names; an unknown name is reported and falls back to INFO.
+
+    A typo in the environment of a container must not stop the service for the sake of a log level.
+    """
+    level = logging.getLevelNamesMapping().get(level_name)
+    logging.basicConfig(
+        level=logging.INFO if level is None else level, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+    if level is None:
+        logger.warning("Unknown LOG_LEVEL %r, logging at INFO; use DEBUG, INFO, WARNING, ERROR or CRITICAL", level_name)
+
+
+configure_logging(LOG_LEVEL)
 
 
 @asynccontextmanager

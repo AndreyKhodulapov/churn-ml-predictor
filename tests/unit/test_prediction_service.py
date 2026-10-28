@@ -1,13 +1,14 @@
+import logging
 from typing import get_args
 
 import pandas as pd
 import pytest
 
-from src.core.constants import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURES, DeviceType, PaymentMethod, Region
+from src.core.config import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURES, DeviceType, PaymentMethod, Region
 from src.core.exceptions import ModelFeaturesMismatchError, ModelNotTrainedError, PredictionError
+from src.ml.learning import train_churn_model
 from src.schemas.learning import TrainMetrics
 from src.schemas.prediction import FeatureDescription, FeatureVectorChurn
-from src.services.learning import train_churn_model
 from src.services.model_storage import TrainedChurnModel
 from src.services.prediction import build_model_input, describe_features, predict_churn
 
@@ -105,6 +106,15 @@ def test_reports_failure_of_the_pipeline_as_prediction_error(model, make_custome
 
 def test_returns_no_predictions_for_no_customers(model):
     assert predict_churn(model, []) == []
+
+
+def test_logs_batch_size_and_churners_but_not_the_features(model, make_customer, caplog):
+    with caplog.at_level(logging.INFO):
+        predict_churn(model, [make_customer(0), make_customer(5), make_customer(5)])
+
+    assert "Predicted churn of 3 customers" in caplog.text
+    assert f"2 of them churn; logreg model trained at {model.trained_at.isoformat()}" in caplog.text
+    assert "europe" not in caplog.text
 
 
 def test_refuses_without_trained_model(make_customer):

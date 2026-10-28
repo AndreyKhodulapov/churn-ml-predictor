@@ -4,7 +4,7 @@ from httpx import ASGITransport, AsyncClient
 from src.main import app
 from src.services.dataset import DatasetProcessor, get_dataset
 from src.services.model_storage import ChurnModelStore, get_model_store
-from src.services.preprocessing import get_split
+from src.services.split import get_split
 from src.services.training_history import TrainingHistory, get_training_history
 
 
@@ -59,7 +59,7 @@ def serve_csv(write_csv, monkeypatch):
         processor.load()
         app.dependency_overrides[get_dataset] = lambda: processor
         # get_split() calls get_dataset() directly rather than through Depends, so the override does not reach it.
-        monkeypatch.setattr("src.services.preprocessing.get_dataset", lambda: processor)
+        monkeypatch.setattr("src.services.split.get_dataset", lambda: processor)
         get_split.cache_clear()
         return processor
 

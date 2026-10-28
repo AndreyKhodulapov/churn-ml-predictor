@@ -251,7 +251,6 @@ PREDICT_RESPONSES: dict[int | str, dict[str, Any]] = {
     ),
 }
 
-# Error responses of /model/train in /docs.
 TRAIN_RESPONSES: dict[int | str, dict[str, Any]] = {
     409: DATASET_NOT_TRAINABLE_RESPONSE,
     422: error_response_doc(
@@ -277,7 +276,6 @@ TRAIN_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: DATASET_UNAVAILABLE_RESPONSE,
 }
 
-# Error responses of /model/tune in /docs.
 TUNE_RESPONSES: dict[int | str, dict[str, Any]] = {
     409: error_response_doc(
         "The dataset cannot be split and trained on, or a churn class of the train part is smaller than cv",
@@ -308,7 +306,6 @@ TUNE_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: DATASET_UNAVAILABLE_RESPONSE,
 }
 
-# Error responses of /model/metrics in /docs.
 METRICS_RESPONSES: dict[int | str, dict[str, Any]] = {
     422: error_response_doc(
         "A query parameter is not one of its values or out of range",
@@ -327,7 +324,6 @@ METRICS_RESPONSES: dict[int | str, dict[str, Any]] = {
     ),
 }
 
-# Error responses of the /dataset endpoints in /docs.
 PREVIEW_RESPONSES: dict[int | str, dict[str, Any]] = {
     422: error_response_doc(
         "n is out of range or not a number",

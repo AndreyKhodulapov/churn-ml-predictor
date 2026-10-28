@@ -24,7 +24,7 @@ from src.core.openapi_examples import (
 from src.main import app
 from src.services.dataset import get_dataset
 from src.services.model_storage import get_model_store
-from src.services.preprocessing import get_split
+from src.services.split import get_split
 from src.services.training_history import get_training_history
 
 SAMPLE_PATH = Path(__file__).parent.parent / "data" / "churn_sample.csv"

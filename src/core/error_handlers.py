@@ -56,6 +56,16 @@ async def request_validation_handler(request: Request, exc: RequestValidationErr
         ValidationErrorDetail(loc=list(error["loc"]), message=error["msg"], type=error["type"]).model_dump()
         for error in exc.errors()
     ]
+    # Where and which check only, like the answer, and the first error only: a whole invalid batch would flood the log.
+    first = details[0]
+    logger.warning(
+        "%s %s failed validation with %d errors, first at %s: %s",
+        request.method,
+        request.url.path,
+        len(details),
+        ".".join(str(part) for part in first["loc"]),
+        first["type"],
+    )
     return error_response(422, "validation_error", "Request failed validation, see details for every error", details)
 
 
@@ -75,12 +85,14 @@ async def dataset_not_trainable_handler(request: Request, exc: DatasetNotTrainab
 async def invalid_hyperparameters_handler(request: Request, exc: InvalidHyperparametersError) -> JSONResponse:
     # The body passes the schema, but the chosen model refuses its hyperparameters: 422 like any other bad input.
     # The message names the model type and hyperparameters only, so it is returned as is.
+    logger.warning("%s %s refused: %s", request.method, request.url.path, exc)
     return error_response(422, "invalid_hyperparameters", str(exc))
 
 
 async def model_not_trained_handler(request: Request, exc: ModelNotTrainedError) -> JSONResponse:
     # The service is up but cannot predict yet: 503, like the missing dataset; it is fixed by /model/train.
     # The message names that fix only, so it is returned as is.
+    logger.warning("%s %s answered before a churn model is trained", request.method, request.url.path)
     return error_response(503, "model_not_trained", str(exc))
 
 
@@ -92,5 +104,7 @@ async def prediction_failed_handler(request: Request, exc: PredictionError) -> J
 
 
 async def internal_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    # Starlette re-raises the exception after sending this response, so the traceback still reaches the server log.
+    # Starlette re-raises the exception after sending this response, so the traceback still reaches the server log;
+    # logging it here too would print it twice. That traceback does not name the request, this line does.
+    logger.error("%s %s failed with an unhandled %s", request.method, request.url.path, type(exc).__name__)
     return error_response(500, "internal_error", "Internal server error")

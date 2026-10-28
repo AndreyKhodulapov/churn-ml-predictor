@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, Query
 
-from src.core.constants import DEFAULT_HISTORY_LIMIT, MAX_HISTORY_RECORDS, ChurnMetric, ModelType
+from src.core.config import DEFAULT_HISTORY_LIMIT, MAX_HISTORY_RECORDS, ChurnMetric, ModelType
 from src.core.openapi_examples import (
     METRICS_RESPONSES,
     TRAIN_EXAMPLES,
@@ -22,7 +22,7 @@ from src.schemas.prediction import FeatureSchemaChurn
 from src.services.model import train_and_save_churn_model, tune_churn_model_on_split
 from src.services.model_storage import ChurnModelStore, get_model_store
 from src.services.prediction import describe_features
-from src.services.preprocessing import SplitData, get_split
+from src.services.split import SplitData, get_split
 from src.services.training_history import TrainingHistory, get_training_history, summarize_history
 
 router = APIRouter(tags=["Model"], prefix="/model")

@@ -9,10 +9,10 @@ import pandas as pd
 import pytest
 import sklearn
 
-from src.core.constants import MODEL_PATH
+from src.core.config import MODEL_PATH
 from src.core.exceptions import ModelLoadError
+from src.ml.learning import train_churn_model
 from src.schemas.learning import ModelStatus, TrainMetrics
-from src.services.learning import train_churn_model
 from src.services.model_storage import (
     ChurnModelStore,
     TrainedChurnModel,

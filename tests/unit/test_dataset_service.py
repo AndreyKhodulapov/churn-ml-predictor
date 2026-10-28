@@ -1,9 +1,9 @@
 import pytest
 
-from src.core.constants import DATASET_PATH
+from src.core.config import DATASET_PATH
 from src.core.exceptions import DatasetLoadError
 from src.schemas.dataset import ClassDistribution, DatasetInfo, DatasetRowChurn
-from src.services.dataset import DatasetProcessor
+from src.services.dataset import DatasetProcessor, get_dataset, is_dataset_loaded
 
 FEATURE_NAMES = [
     "monthly_fee",
@@ -168,3 +168,24 @@ def test_failed_load_keeps_processor_unloaded(write_csv, csv_header, csv_row):
         processor.load()
     with pytest.raises(RuntimeError, match="not loaded"):
         processor.get_info()
+
+
+@pytest.fixture
+def default_dataset_path(tmp_path, monkeypatch):
+    """Point get_dataset() at a temporary file with an empty cache; the cache is emptied again for later tests."""
+    path = tmp_path / "default.csv"
+    monkeypatch.setattr("src.services.dataset.DATASET_PATH", path)
+    get_dataset.cache_clear()
+    yield path
+    get_dataset.cache_clear()
+
+
+def test_dataset_is_reported_loaded_once_a_retry_succeeds(default_dataset_path, csv_header, csv_row):
+    with pytest.raises(DatasetLoadError):
+        get_dataset()
+    assert not is_dataset_loaded()
+
+    default_dataset_path.write_text(f"{csv_header}\n{csv_row}\n")
+    get_dataset()
+
+    assert is_dataset_loaded()

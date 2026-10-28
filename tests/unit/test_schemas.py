@@ -3,7 +3,7 @@ import math
 import pytest
 from pydantic import ValidationError
 
-from src.core.constants import DEFAULT_PARAM_GRIDS, MAX_TUNING_FITS
+from src.core.config import DEFAULT_PARAM_GRIDS, MAX_TUNING_FITS
 from src.schemas.dataset import DatasetRowChurn
 from src.schemas.learning import TrainingConfigChurn, TuningCandidate, TuningConfigChurn, TuningResultChurn
 from src.schemas.prediction import FeatureVectorChurn

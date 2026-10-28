@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 from pydantic import ValidationError
 
-from src.core.constants import DATASET_PATH, TARGET_COLUMN
+from src.core.config import DATASET_PATH, TARGET_COLUMN
 from src.core.exceptions import DatasetLoadError
 from src.schemas.dataset import ClassDistribution, DatasetInfo, DatasetRowChurn
 from src.services.utils import class_distribution
@@ -82,3 +82,11 @@ def get_dataset() -> DatasetProcessor:
     processor = DatasetProcessor(DATASET_PATH)
     processor.load()
     return processor
+
+
+def is_dataset_loaded() -> bool:
+    """Whether get_dataset() has loaded the dataset, without trying to load it.
+
+    lru_cache keeps only a successful load, so a failed one leaves the cache empty and the next request retries it.
+    """
+    return get_dataset.cache_info().currsize > 0

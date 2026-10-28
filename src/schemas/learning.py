@@ -4,7 +4,7 @@ from typing import Annotated, Any, Self
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
-from src.core.constants import DEFAULT_PARAM_GRIDS, MAX_TUNING_FITS, ChurnMetric, ModelType
+from src.core.config import DEFAULT_PARAM_GRIDS, MAX_TUNING_FITS, ChurnMetric, ModelType
 from src.schemas.base import BaseSchema
 
 

@@ -7,7 +7,7 @@ import pytest
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 
-from src.core.constants import FEATURES, MAX_HISTORY_RECORDS, MAX_TUNING_FITS
+from src.core.config import FEATURES, MAX_HISTORY_RECORDS, MAX_TUNING_FITS
 from src.core.exceptions import DatasetLoadError
 from src.core.openapi_examples import (
     CV_TOO_LARGE_ERROR,
@@ -23,9 +23,10 @@ from src.core.openapi_examples import (
     UNKNOWN_MODEL_TYPE_QUERY_ERROR,
 )
 from src.main import app, lifespan
+from src.ml.preprocessing import SplitData
 from src.services.dataset import DatasetProcessor
 from src.services.model_storage import get_model_store, load_churn_model
-from src.services.preprocessing import SplitData, get_split
+from src.services.split import get_split
 from src.services.training_history import get_training_history, load_history
 
 
@@ -270,6 +271,13 @@ async def test_train_answers_422_on_hyperparameters_the_model_refuses(client, mo
     assert load_churn_model(model_store.path).trained_at == trained.trained_at
 
 
+async def test_train_logs_hyperparameters_the_model_refuses(client, caplog):
+    with caplog.at_level(logging.WARNING):
+        await client.post("/model/train", json={"hyperparameters": {"n_estimators": 10}})
+
+    assert "POST /model/train refused: Unknown hyperparameters of logreg: n_estimators" in caplog.text
+
+
 async def test_openapi_shows_train_errors(documented_errors):
     assert documented_errors("post", "/model/train", 409) == {"no_labeled_rows": NO_LABELED_ROWS_ERROR}
     assert documented_errors("post", "/model/train", 422) == {
@@ -326,7 +334,7 @@ async def test_train_answers_503_on_empty_dataset_file(client, model_store, writ
         return processor
 
     # get_split() calls get_dataset() directly rather than through Depends, so it is patched where it is looked up.
-    monkeypatch.setattr("src.services.preprocessing.get_dataset", load_dataset)
+    monkeypatch.setattr("src.services.split.get_dataset", load_dataset)
     get_split.cache_clear()
     with caplog.at_level(logging.WARNING):
         response = await client.post("/model/train")

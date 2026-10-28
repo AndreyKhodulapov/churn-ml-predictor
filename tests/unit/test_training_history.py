@@ -4,10 +4,10 @@ from datetime import UTC, datetime
 import pandas as pd
 import pytest
 
-from src.core.constants import HISTORY_PATH
+from src.core.config import HISTORY_PATH
 from src.core.exceptions import HistoryLoadError
+from src.ml.learning import train_churn_model
 from src.schemas.learning import ModelMetricsChurn, TrainingRecord, TrainMetrics
-from src.services.learning import train_churn_model
 from src.services.model_storage import TrainedChurnModel
 from src.services.training_history import (
     TrainingHistory,

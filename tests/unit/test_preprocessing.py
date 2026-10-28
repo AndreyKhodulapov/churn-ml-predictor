@@ -4,19 +4,13 @@ import re
 import pandas as pd
 import pytest
 
-from src.core.constants import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURES, NUMERIC_FEATURES, TARGET_COLUMN
+from src.core.config import BINARY_FEATURES, CATEGORICAL_FEATURES, FEATURES, NUMERIC_FEATURES, TARGET_COLUMN
 from src.core.exceptions import DatasetNotTrainableError
+from src.ml.preprocessing import PreparedData, build_imputer, prepare_data, split_data
 from src.schemas.dataset import ClassDistribution, DatasetRowChurn, SplitDataInfo
 from src.schemas.prediction import FeatureVectorChurn
-from src.services.preprocessing import (
-    PreparedData,
-    build_imputer,
-    check_class_shares,
-    describe_split,
-    get_split,
-    prepare_data,
-    split_data,
-)
+from src.services.dataset import DatasetProcessor
+from src.services.split import check_class_shares, describe_split, get_split, is_dataset_trainable
 
 
 @pytest.fixture
@@ -184,6 +178,32 @@ def test_get_split_splits_default_dataset_once():
     assert (len(split.X_train), len(split.X_test)) == (1600, 400)
     assert list(split.X_train.columns) == list(split.X_test.columns) == list(FEATURES)
     assert get_split() is split
+
+
+def test_get_split_logs_sizes_of_both_parts(caplog):
+    # Cleared to split again: an earlier test may have cached the split, and only splitting logs.
+    get_split.cache_clear()
+
+    with caplog.at_level(logging.INFO):
+        get_split()
+
+    assert "Split the dataset into 1600 train and 400 test rows" in caplog.text
+
+
+def test_dataset_is_reported_trainable_only_after_a_split_succeeds(write_csv, csv_header, monkeypatch):
+    header_only = DatasetProcessor(write_csv(f"{csv_header}\n"))
+    header_only.load()
+    monkeypatch.setattr("src.services.split.get_dataset", lambda: header_only)
+    get_split.cache_clear()
+
+    with pytest.raises(DatasetNotTrainableError):
+        get_split()
+    assert not is_dataset_trainable()
+
+    monkeypatch.undo()
+    get_split()
+
+    assert is_dataset_trainable()
 
 
 def test_describe_split_reports_sizes_and_distributions(prepared):

@@ -6,10 +6,10 @@ from pathlib import Path
 
 from pydantic import TypeAdapter, ValidationError
 
-from src.core.constants import HISTORY_PATH, MAX_HISTORY_RECORDS, ChurnMetric, ModelType
+from src.core.config import HISTORY_PATH, MAX_HISTORY_RECORDS, ChurnMetric, ModelType
 from src.core.exceptions import HistoryLoadError
+from src.ml.learning import describe_hyperparameters
 from src.schemas.learning import ModelMetricsChurn, TrainingRecord
-from src.services.learning import describe_hyperparameters
 from src.services.model_storage import TrainedChurnModel
 
 logger = logging.getLogger(__name__)
