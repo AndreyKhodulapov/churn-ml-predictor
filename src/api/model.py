@@ -10,7 +10,6 @@ from src.core.openapi_examples import (
     TUNE_EXAMPLES,
     TUNE_RESPONSES,
 )
-from src.ml.preprocessing import SplitData
 from src.schemas.learning import (
     ModelMetricsChurn,
     ModelStatus,
@@ -23,7 +22,7 @@ from src.schemas.prediction import FeatureSchemaChurn
 from src.services.model import train_and_save_churn_model, tune_churn_model_on_split
 from src.services.model_storage import ChurnModelStore, get_model_store
 from src.services.prediction import describe_features
-from src.services.split import get_split
+from src.services.split import SplitData, get_split
 from src.services.training_history import TrainingHistory, get_training_history, summarize_history
 
 router = APIRouter(tags=["Model"], prefix="/model")

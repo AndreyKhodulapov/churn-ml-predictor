@@ -55,6 +55,8 @@ events it logs, what it keeps out of the log and what `/health` reports.
   An alert on `ERROR` lines then fires on bugs, not on bad requests.
 - The level comes from the `LOG_LEVEL` environment variable, `INFO` by
   default, so a container is started at `DEBUG` without rebuilding the image.
+  A name that is not a level is reported with a warning and falls back to
+  `INFO`: a typo in the environment must not stop the container.
 - Every line holds the time, the level and the logger, which is the module:
   `src.services.prediction` names where the line came from.
 - The log goes to stderr rather than to a file. In a container, `docker logs`
