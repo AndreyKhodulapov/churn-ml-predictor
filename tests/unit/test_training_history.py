@@ -6,7 +6,7 @@ import pytest
 
 from src.core.constants import HISTORY_PATH
 from src.core.exceptions import HistoryLoadError
-from src.schemas.learning import TrainingRecord, TrainMetrics
+from src.schemas.learning import ModelMetricsChurn, TrainingRecord, TrainMetrics
 from src.services.learning import train_churn_model
 from src.services.model_storage import TrainedChurnModel
 from src.services.training_history import (
@@ -15,15 +15,18 @@ from src.services.training_history import (
     get_training_history,
     load_history,
     save_history,
+    summarize_history,
 )
 
 
-def make_record(day: int, model_type: str = "logreg", **hyperparameters) -> TrainingRecord:
+def make_record(
+    day: int, model_type: str = "logreg", metrics: TrainMetrics | None = None, **hyperparameters
+) -> TrainingRecord:
     return TrainingRecord(
         trained_at=datetime(2026, 10, day, 12, 30, tzinfo=UTC),
         model_type=model_type,
         hyperparameters=hyperparameters,
-        metrics=TrainMetrics(accuracy=0.75, f1=0.5, roc_auc=0.8),
+        metrics=metrics or TrainMetrics(accuracy=0.75, f1=0.5, roc_auc=0.8),
     )
 
 
@@ -158,6 +161,52 @@ def test_history_load_rejects_damaged_file_and_stays_empty(history_path):
         history.load()
 
     assert history.records() == []
+
+
+@pytest.fixture
+def scored_history(history_path) -> TrainingHistory:
+    """Four trainings, oldest first: each metric has its best in a different one."""
+    history = TrainingHistory(history_path)
+    for record in SCORED_RECORDS:
+        history.append(record)
+    return history
+
+
+SCORED_RECORDS = (
+    make_record(23, metrics=TrainMetrics(accuracy=0.79, f1=0.05, roc_auc=0.61)),
+    make_record(24, metrics=TrainMetrics(accuracy=0.59, f1=0.35, roc_auc=0.61)),
+    make_record(25, "random_forest", metrics=TrainMetrics(accuracy=0.62, f1=0.31, roc_auc=0.65)),
+    make_record(26, metrics=TrainMetrics(accuracy=0.70, f1=0.20, roc_auc=0.60)),
+)
+
+
+def test_summary_of_empty_history_has_no_latest_or_best(history_path):
+    summary = summarize_history(TrainingHistory(history_path), None, 10, "f1")
+
+    assert summary == ModelMetricsChurn(latest=None, history=[], best=None)
+
+
+def test_summary_lists_the_newest_records_and_no_best_unless_asked(scored_history):
+    summary = summarize_history(scored_history, None, 2, None)
+
+    assert summary == ModelMetricsChurn(latest=SCORED_RECORDS[3], history=[SCORED_RECORDS[3], SCORED_RECORDS[2]])
+
+
+@pytest.mark.parametrize(("best_by", "best"), [("accuracy", 0), ("f1", 1), ("roc_auc", 2)])
+def test_summary_picks_the_best_record_beyond_the_listed_ones(scored_history, best_by, best):
+    summary = summarize_history(scored_history, None, 1, best_by)
+
+    assert summary.history == [SCORED_RECORDS[3]]
+    assert summary.best == SCORED_RECORDS[best]
+
+
+def test_summary_of_one_model_type(scored_history):
+    summary = summarize_history(scored_history, "logreg", 10, "roc_auc")
+
+    assert summary.latest == SCORED_RECORDS[3]
+    assert summary.history == [SCORED_RECORDS[3], SCORED_RECORDS[1], SCORED_RECORDS[0]]
+    # The forest has the best roc_auc of all; of the two logreg trainings sharing the next one, the newer wins.
+    assert summary.best == SCORED_RECORDS[1]
 
 
 def test_service_uses_one_history_at_default_path():

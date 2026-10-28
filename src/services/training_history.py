@@ -6,9 +6,9 @@ from pathlib import Path
 
 from pydantic import TypeAdapter, ValidationError
 
-from src.core.constants import HISTORY_PATH, MAX_HISTORY_RECORDS, ModelType
+from src.core.constants import HISTORY_PATH, MAX_HISTORY_RECORDS, ChurnMetric, ModelType
 from src.core.exceptions import HistoryLoadError
-from src.schemas.learning import TrainingRecord
+from src.schemas.learning import ModelMetricsChurn, TrainingRecord
 from src.services.learning import describe_hyperparameters
 from src.services.model_storage import TrainedChurnModel
 
@@ -79,6 +79,19 @@ class TrainingHistory:
     def records(self, model_type: ModelType | None = None) -> list[TrainingRecord]:
         """Recorded trainings, newest first; only those of model_type if it is given."""
         return [record for record in reversed(self._records) if model_type is None or record.model_type == model_type]
+
+
+def summarize_history(
+    history: TrainingHistory, model_type: ModelType | None, limit: int, best_by: ChurnMetric | None
+) -> ModelMetricsChurn:
+    """The latest training, the limit newest ones and the best one by best_by; of model_type only if it is given."""
+    # Read once: a training recorded meanwhile must not make latest differ from the first one of history.
+    records = history.records(model_type)
+    best = None
+    if best_by is not None and records:
+        # max() keeps the first of equal scores, so a tie goes to the newest training.
+        best = max(records, key=lambda record: getattr(record.metrics, best_by))
+    return ModelMetricsChurn(latest=records[0] if records else None, history=records[:limit], best=best)
 
 
 @lru_cache

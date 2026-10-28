@@ -7,18 +7,20 @@ import pytest
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 
-from src.core.constants import FEATURES, MAX_TUNING_FITS
+from src.core.constants import FEATURES, MAX_HISTORY_RECORDS, MAX_TUNING_FITS
 from src.core.exceptions import DatasetLoadError
 from src.core.openapi_examples import (
     CV_TOO_LARGE_ERROR,
     DATASET_UNAVAILABLE_ERROR,
     INVALID_C_ERROR,
+    INVALID_LIMIT_ERROR,
     NO_LABELED_ROWS_ERROR,
     TOO_MANY_FITS_ERROR,
     TRAIN_EXAMPLES,
     TUNE_EXAMPLES,
     UNKNOWN_HYPERPARAMETER_ERROR,
     UNKNOWN_MODEL_TYPE_ERROR,
+    UNKNOWN_MODEL_TYPE_QUERY_ERROR,
 )
 from src.main import app, lifespan
 from src.services.dataset import DatasetProcessor
@@ -683,3 +685,93 @@ async def test_predict_accepts_customer_built_from_schema(client):
     response = await client.post("/predict", json=customer)
 
     assert response.status_code == 200
+
+
+async def test_metrics_before_the_first_training(client):
+    response = await client.get("/model/metrics")
+
+    assert response.status_code == 200
+    assert response.json() == {"latest": None, "history": [], "best": None}
+
+
+async def test_metrics_show_the_latest_and_earlier_trainings(client):
+    default = (await client.post("/model/train")).json()
+    balanced = (await client.post("/model/train", json={"hyperparameters": {"class_weight": "balanced"}})).json()
+    status = (await client.get("/model/status")).json()
+
+    body = (await client.get("/model/metrics")).json()
+
+    assert body["latest"] == {key: status[key] for key in ("trained_at", "model_type", "hyperparameters", "metrics")}
+    assert [record["metrics"] for record in body["history"]] == [balanced, default]
+    assert body["best"] is None
+
+
+async def test_metrics_compare_trainings_by_a_metric(client):
+    await client.post("/model/train")
+    await client.post("/model/train", json={"hyperparameters": {"class_weight": "balanced"}})
+
+    by_accuracy = (await client.get("/model/metrics", params={"limit": 1, "best_by": "accuracy"})).json()
+    by_f1 = (await client.get("/model/metrics", params={"best_by": "f1"})).json()
+
+    # Balanced weights trade accuracy for churn F1; the best by accuracy is not among the one listed training.
+    assert by_accuracy["best"]["hyperparameters"]["class_weight"] is None
+    assert [record["hyperparameters"]["class_weight"] for record in by_accuracy["history"]] == ["balanced"]
+    assert by_f1["best"]["hyperparameters"]["class_weight"] == "balanced"
+
+
+async def test_metrics_of_one_model_type(client):
+    await client.post("/model/train")
+    await client.post("/model/train", json={"model_type": "random_forest", "hyperparameters": {"n_estimators": 20}})
+
+    body = (await client.get("/model/metrics", params={"model_type": "logreg", "best_by": "roc_auc"})).json()
+
+    assert body["latest"]["model_type"] == "logreg"
+    assert [record["model_type"] for record in body["history"]] == ["logreg"]
+    assert body["best"] == body["latest"]
+
+
+async def test_metrics_do_not_need_the_dataset(client):
+    await client.post("/model/train")
+
+    def broken_split():
+        raise DatasetLoadError("Dataset file not found: /secret/path.csv")
+
+    app.dependency_overrides[get_split] = broken_split
+    response = await client.get("/model/metrics")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert len(response.json()["history"]) == 1
+
+
+@pytest.mark.parametrize(
+    ("params", "loc"),
+    [
+        ({"model_type": "xgboost"}, ["query", "model_type"]),
+        ({"limit": 0}, ["query", "limit"]),
+        ({"limit": MAX_HISTORY_RECORDS + 1}, ["query", "limit"]),
+        ({"best_by": "precision"}, ["query", "best_by"]),
+    ],
+)
+async def test_metrics_reject_invalid_query(client, params, loc):
+    response = await client.get("/model/metrics", params=params)
+
+    assert response.status_code == 422
+    assert [error["loc"] for error in response.json()["details"]] == [loc]
+
+
+async def test_openapi_shows_metrics_errors(documented_errors):
+    assert documented_errors("get", "/model/metrics", 422) == {
+        "unknown_model_type": UNKNOWN_MODEL_TYPE_QUERY_ERROR,
+        "invalid_limit": INVALID_LIMIT_ERROR,
+    }
+
+
+@pytest.mark.parametrize(
+    ("params", "error"),
+    [({"model_type": "xgboost"}, UNKNOWN_MODEL_TYPE_QUERY_ERROR), ({"limit": 0}, INVALID_LIMIT_ERROR)],
+)
+async def test_metrics_answer_documented_422_errors(client, params, error):
+    response = await client.get("/model/metrics", params=params)
+
+    assert response.json() == error

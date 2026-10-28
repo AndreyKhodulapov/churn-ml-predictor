@@ -174,6 +174,12 @@ TOO_MANY_FITS_ERROR = validation_error(
 INVALID_N_ERROR = validation_error(
     {"loc": ["query", "n"], "message": "Input should be greater than or equal to 1", "type": "greater_than_equal"}
 )
+UNKNOWN_MODEL_TYPE_QUERY_ERROR = validation_error(
+    {"loc": ["query", "model_type"], "message": "Input should be 'logreg' or 'random_forest'", "type": "literal_error"}
+)
+INVALID_LIMIT_ERROR = validation_error(
+    {"loc": ["query", "limit"], "message": "Input should be greater than or equal to 1", "type": "greater_than_equal"}
+)
 
 
 def error_response_doc(description: str, examples: dict[str, dict[str, Any]]) -> dict[str, Any]:
@@ -300,6 +306,25 @@ TUNE_RESPONSES: dict[int | str, dict[str, Any]] = {
         },
     ),
     503: DATASET_UNAVAILABLE_RESPONSE,
+}
+
+# Error responses of /model/metrics in /docs.
+METRICS_RESPONSES: dict[int | str, dict[str, Any]] = {
+    422: error_response_doc(
+        "A query parameter is not one of its values or out of range",
+        {
+            "unknown_model_type": {
+                "summary": "Unknown model type",
+                "description": "`?model_type=xgboost` sent.",
+                "value": UNKNOWN_MODEL_TYPE_QUERY_ERROR,
+            },
+            "invalid_limit": {
+                "summary": "limit out of range",
+                "description": "`?limit=0` sent.",
+                "value": INVALID_LIMIT_ERROR,
+            },
+        },
+    ),
 }
 
 # Error responses of the /dataset endpoints in /docs.
