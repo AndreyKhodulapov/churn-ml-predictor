@@ -7,8 +7,9 @@ billing, usage and support history.
 Current state: the API validates customer features, serves the training
 dataset, trains a logistic regression or a random forest on it with the
 requested hyperparameters, finds the best hyperparameters by grid search,
-keeps the trained model on disk across restarts and predicts churn of new
-customers with it.
+keeps the trained model on disk across restarts, records the test metrics of
+every training to compare configs and predicts churn of new customers with
+the model.
 
 ## Endpoints
 
@@ -19,9 +20,10 @@ customers with it.
 | GET | `/dataset/preview?n=5` | first `n` rows of the training dataset, `1 <= n <= 100` |
 | GET | `/dataset/info` | row and column counts, feature names, churn class distribution |
 | GET | `/dataset/split-info` | train and test sizes, churn class distribution in each part |
-| POST | `/model/train` | train the churn model of the type and with the hyperparameters from the optional JSON body, save it, return accuracy and churn F1 on the test part |
+| POST | `/model/train` | train the churn model of the type and with the hyperparameters from the optional JSON body, save it, return accuracy, churn F1 and ROC-AUC on the test part |
 | POST | `/model/tune` | score a grid of hyperparameters by cross-validation on the train part, return the best config ready for `/model/train` and the five best combinations; changes no model |
 | GET | `/model/status` | whether a model is trained, when, its type, main hyperparameters and test metrics |
+| GET | `/model/metrics?model_type=&limit=10&best_by=` | the latest training, the `limit` newest ones and the best one by a test metric, optionally of one model type |
 | GET | `/model/schema` | features `/predict` expects, in the training order: how the model treats each one, its type and accepted values |
 
 Endpoints that need the dataset answer `503` while it is missing or broken, and `409` with the reason while it
@@ -174,18 +176,23 @@ and its shares, taken over all rows, sum to less than 1 when such rows exist.
 
 `/model/train` responses for the bundled dataset:
 
-| `model_type` | `hyperparameters` | accuracy | churn F1 |
-|---|---|---|---|
-| `logreg` | `{}` | 0.79 | 0.045 |
-| `logreg` | `{"class_weight": "balanced"}` | 0.5875 | 0.348 |
-| `random_forest` | `{}` | 0.7825 | 0.171 |
-| `random_forest` | `{"class_weight": "balanced"}` | 0.695 | 0.238 |
-| `random_forest` | `{"n_estimators": 300, "max_depth": 5, "class_weight": "balanced"}` | 0.62 | 0.309 |
+| `model_type` | `hyperparameters` | accuracy | churn F1 | ROC-AUC |
+|---|---|---|---|---|
+| `logreg` | `{}` | 0.79 | 0.045 | 0.609 |
+| `logreg` | `{"class_weight": "balanced"}` | 0.5875 | 0.348 | 0.611 |
+| `random_forest` | `{}` | 0.7825 | 0.171 | 0.585 |
+| `random_forest` | `{"class_weight": "balanced"}` | 0.695 | 0.238 | 0.585 |
+| `random_forest` | `{"n_estimators": 300, "max_depth": 5, "class_weight": "balanced"}` | 0.62 | 0.309 | 0.611 |
 
 Without class weights, with 20% churners, the logistic regression almost never predicts churn: its accuracy is close
 to the 0.7975 of always answering "stays" and its F1 is near zero. `"class_weight": "balanced"` weights churners up,
 and the model catches about half of them at the cost of accuracy. A random forest of fully grown trees fits the noise
 of the train part; shallow trees do better, but on this dataset the balanced logistic regression is still ahead.
+
+`roc_auc` scores the churn probability rather than the label: how often a churner gets a higher one than a customer
+who stays, 0.5 for a random guess. Class weights move the 0.5 threshold, not this ranking, so they change F1 a lot
+and ROC-AUC barely: the unweighted logistic regression ranks churners as well as the balanced one and only fails to
+call them churners.
 
 ## Hyperparameter tuning
 
@@ -273,7 +280,7 @@ and after training a random forest with `{"n_estimators": 300, "max_depth": 5, "
 {
   "trained": true,
   "trained_at": "2026-10-27T10:11:34.699584Z",
-  "metrics": {"accuracy": 0.62, "f1": 0.3090909090909091},
+  "metrics": {"accuracy": 0.62, "f1": 0.3090909090909091, "roc_auc": 0.6114013700220596},
   "model_type": "random_forest",
   "hyperparameters": {
     "n_estimators": 300,
@@ -287,6 +294,75 @@ and after training a random forest with `{"n_estimators": 300, "max_depth": 5, "
 
 `hyperparameters` lists the main ones of the model type and every requested one, with the values the model was
 trained with: `min_samples_leaf` and `max_features` were not sent and show the scikit-learn defaults.
+
+## Training history
+
+`/model/status` describes the served model only; every training replaces it. To follow the quality of the model and
+compare configs, every successful `/model/train` also adds a record to `models/training_history.json`: `trained_at`,
+`model_type`, `hyperparameters` as `/model/status` shows them and the test `metrics`. `GET /model/metrics` returns
+them:
+
+```bash
+curl http://127.0.0.1:8000/model/metrics                              # the latest and the 10 newest trainings
+curl "http://127.0.0.1:8000/model/metrics?limit=2&best_by=f1"          # plus the best one by churn F1
+curl "http://127.0.0.1:8000/model/metrics?model_type=logreg&best_by=roc_auc"
+```
+
+- `latest` is the newest training, `history` the `limit` newest ones, newest first, `1 <= limit <= 100`.
+- `best_by` is `accuracy`, `f1` or `roc_auc`; `best` is then the training with the highest value of it among every
+  record, not only the listed ones, the newer one on a tie. Without `best_by` it is `null`.
+- `model_type` narrows `latest`, `history` and `best` to the trainings of that type.
+- An unknown `model_type` or `best_by`, or `limit` out of range, gets `422` with `validation_error`.
+- Before the first training `latest` and `best` are `null` and `history` is empty; the endpoint needs no dataset.
+
+After training the five configs of the [Training config](#training-config) table in their order,
+`?limit=2&best_by=f1` answers (metrics rounded, timestamps shortened):
+
+```json
+{
+  "latest": {"trained_at": "2026-10-28T06:43:12Z", "model_type": "random_forest", "...": "..."},
+  "history": [
+    {
+      "trained_at": "2026-10-28T06:43:12Z",
+      "model_type": "random_forest",
+      "hyperparameters": {"n_estimators": 300, "max_depth": 5, "min_samples_leaf": 1, "max_features": "sqrt", "class_weight": "balanced"},
+      "metrics": {"accuracy": 0.62, "f1": 0.309, "roc_auc": 0.611}
+    },
+    {
+      "trained_at": "2026-10-28T06:43:11Z",
+      "model_type": "random_forest",
+      "hyperparameters": {"n_estimators": 100, "max_depth": null, "min_samples_leaf": 1, "max_features": "sqrt", "class_weight": "balanced"},
+      "metrics": {"accuracy": 0.695, "f1": 0.2375, "roc_auc": 0.585}
+    }
+  ],
+  "best": {
+    "trained_at": "2026-10-28T06:43:10Z",
+    "model_type": "logreg",
+    "hyperparameters": {"C": 1.0, "l1_ratio": 0.0, "solver": "lbfgs", "max_iter": 100, "class_weight": "balanced"},
+    "metrics": {"accuracy": 0.5875, "f1": 0.348, "roc_auc": 0.611}
+  }
+}
+```
+
+`latest` is the same record as the first one of `history`. The metric decides what "best" means: by `accuracy` the
+best is the logistic regression without class weights (0.79), which almost never predicts churn (F1 0.045).
+
+`model_type` and `hyperparameters` of a record are a body `/model/train` takes as it is and trains the same model with
+again, so the best config of the history is one request away from being served:
+
+```bash
+curl -X POST http://127.0.0.1:8000/model/train \
+  -H "Content-Type: application/json" \
+  -d '{"model_type": "logreg", "hyperparameters": {"C": 1.0, "l1_ratio": 0.0, "solver": "lbfgs", "max_iter": 100, "class_weight": "balanced"}}'
+```
+
+The history keeps the 100 newest trainings and survives restarts like the model. A failed training (`409`, `422`,
+`503`) is not recorded. A history file that cannot be read is logged and the service starts with an empty history;
+the next training writes a new file over it. If the record cannot be written, the training still answers `200`: the
+new model is already served, and the reason goes to the log.
+
+How the history is kept and why a config picked by its test metrics needs care:
+[docs/training_history.md](docs/training_history.md).
 
 ## Prediction
 
@@ -463,23 +539,32 @@ make test
 pip install -r requirements-dev.txt
 pytest                      # all tests
 pytest tests/unit           # schemas and dataset service
-pytest tests/integration    # HTTP API via httpx.AsyncClient
+pytest tests/integration    # HTTP API via httpx.AsyncClient and the whole pipeline via TestClient
 ruff check .
 ```
+
+`tests/integration/test_churn_pipeline.py` runs the whole scenario through `fastapi.testclient.TestClient`: the app
+starts with its lifespan, reads a CSV from disk, trains via `/model/train`, reports via `/model/status` and predicts via
+`/predict`, including the errors on the way (prediction without a model, a failed training, a missing or single-class
+dataset). It reads `tests/data/churn_sample.csv`, 150 rows of the bundled dataset stratified by churn
+(`train_test_split(df, train_size=150, stratify=df["churn"], random_state=42)`), so it is fast and gives the same
+result on every run. Models and the training history trained by the tests go to a temporary directory, never to
+`models/`.
 
 ## Project layout
 
 ```
 data/
 └── churn_dataset.csv  # training dataset
-models/                # trained model saved by /model/train, not tracked by git
+models/                # trained model and training history saved by /model/train, not tracked by git
 src/
 ├── main.py            # FastAPI app, startup, router registration
 ├── core/              # constants, /docs examples, exceptions, error handlers
 ├── routers/           # HTTP endpoints
-├── services/          # dataset loading, statistics, preprocessing, train/test split, model training, storage and prediction
+├── services/          # dataset loading, statistics, preprocessing, train/test split, model training, storage, training history and prediction
 └── schemas/           # Pydantic models of features, dataset rows and responses
 tests/
+├── data/              # fixed 150-row sample of the dataset for the pipeline tests
 ├── unit/
 └── integration/
 docs/                  # notes on the underlying concepts

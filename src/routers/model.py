@@ -1,14 +1,29 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, Query
 
-from src.core.openapi_examples import TRAIN_EXAMPLES, TRAIN_RESPONSES, TUNE_EXAMPLES, TUNE_RESPONSES
-from src.schemas.learning import ModelStatus, TrainingConfigChurn, TrainMetrics, TuningConfigChurn, TuningResultChurn
+from src.core.constants import DEFAULT_HISTORY_LIMIT, MAX_HISTORY_RECORDS, ChurnMetric, ModelType
+from src.core.openapi_examples import (
+    METRICS_RESPONSES,
+    TRAIN_EXAMPLES,
+    TRAIN_RESPONSES,
+    TUNE_EXAMPLES,
+    TUNE_RESPONSES,
+)
+from src.schemas.learning import (
+    ModelMetricsChurn,
+    ModelStatus,
+    TrainingConfigChurn,
+    TrainMetrics,
+    TuningConfigChurn,
+    TuningResultChurn,
+)
 from src.schemas.prediction import FeatureSchemaChurn
 from src.services.model import train_and_save_churn_model, tune_churn_model_on_split
 from src.services.model_storage import ChurnModelStore, get_model_store
 from src.services.prediction import describe_features
 from src.services.preprocessing import SplitData, get_split
+from src.services.training_history import TrainingHistory, get_training_history, summarize_history
 
 router = APIRouter(tags=["Model"], prefix="/model")
 
@@ -17,12 +32,13 @@ router = APIRouter(tags=["Model"], prefix="/model")
 @router.post(
     "/train",
     summary="Train the churn model and serve it",
-    response_description="Accuracy and churn F1 of the new model on the test part",
+    response_description="Accuracy, churn F1 and ROC-AUC of the new model on the test part",
     responses=TRAIN_RESPONSES,
 )
 def train_model(
     split: Annotated[SplitData, Depends(get_split)],
     store: Annotated[ChurnModelStore, Depends(get_model_store)],
+    history: Annotated[TrainingHistory, Depends(get_training_history)],
     # Without a body the service trains logreg with the scikit-learn defaults.
     config: Annotated[TrainingConfigChurn, Body(default_factory=TrainingConfigChurn, openapi_examples=TRAIN_EXAMPLES)],
 ) -> TrainMetrics:
@@ -36,7 +52,7 @@ def train_model(
     Answers `422` when the model does not know a hyperparameter or refuses its value, `409` when the dataset cannot be
     trained on and `503` while it is not available. A failed training keeps the previous model.
     """
-    return train_and_save_churn_model(split, config, store)
+    return train_and_save_churn_model(split, config, store, history)
 
 
 # A plain def for the same reason as /train: the grid search fits one model per combination and fold.
@@ -71,6 +87,37 @@ def tune_model(
 @router.get("/status")
 def get_model_status(store: Annotated[ChurnModelStore, Depends(get_model_store)]) -> ModelStatus:
     return store.get_status()
+
+
+@router.get(
+    "/metrics",
+    summary="Show the test metrics of the latest and earlier trainings",
+    response_description="The latest training, the newest ones and, if asked, the best one by a metric",
+    responses=METRICS_RESPONSES,
+)
+def get_model_metrics(
+    history: Annotated[TrainingHistory, Depends(get_training_history)],
+    model_type: Annotated[ModelType | None, Query(description="Only the trainings of this model type")] = None,
+    limit: Annotated[
+        int, Query(ge=1, le=MAX_HISTORY_RECORDS, description="Number of the newest trainings to list")
+    ] = DEFAULT_HISTORY_LIMIT,
+    best_by: Annotated[ChurnMetric | None, Query(description="Metric to pick the best training by")] = None,
+) -> ModelMetricsChurn:
+    """List successful `POST /model/train` runs, newest first, to follow the quality of the churn model and compare
+    configs.
+
+    Every record holds `trained_at`, `model_type`, the values of the main and requested `hyperparameters` and the
+    test `metrics`: `accuracy`, `f1` of the churn class and `roc_auc`. `model_type` and `hyperparameters` of a record
+    are a body `POST /model/train` takes to train the same model again.
+
+    `latest` is the newest training, `history` the `limit` newest ones. With `best_by` set to `accuracy`, `f1` or
+    `roc_auc`, `best` is the training with the highest value of it among every recorded one, not only the listed
+    ones; a tie goes to the newest. `model_type` narrows all three to the trainings of that type.
+
+    The service keeps the last 100 trainings across restarts; failed ones are not recorded. Before the first training
+    `latest` is `null` and `history` empty.
+    """
+    return summarize_history(history, model_type, limit, best_by)
 
 
 @router.get(

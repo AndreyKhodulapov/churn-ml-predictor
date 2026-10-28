@@ -19,6 +19,7 @@ from src.core.error_handlers import (
 from src.core.exceptions import (
     DatasetLoadError,
     DatasetNotTrainableError,
+    HistoryLoadError,
     InvalidHyperparametersError,
     ModelLoadError,
     ModelNotTrainedError,
@@ -28,6 +29,7 @@ from src.routers import dataset, health, model, prediction
 from src.services.dataset import get_dataset
 from src.services.model_storage import get_model_store
 from src.services.preprocessing import get_split
+from src.services.training_history import get_training_history
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -48,6 +50,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         get_model_store().load()
     except ModelLoadError as e:
         logger.warning("Starting without a trained churn model: %s", e)
+    # A damaged history file does not stop the service either; the next training writes a new one over it.
+    try:
+        get_training_history().load()
+    except HistoryLoadError as e:
+        logger.warning("Starting with an empty training history: %s", e)
     yield
 
 

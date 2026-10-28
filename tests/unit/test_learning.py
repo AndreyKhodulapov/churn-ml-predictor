@@ -208,32 +208,39 @@ def test_describe_hyperparameters_adds_requested_ones_beyond_the_main(X_train):
     assert (described["C"], described["tol"]) == (0.5, 0.001)
 
 
-def fixed_predictions(predictions: list[int]) -> Mock:
+def fixed_predictions(churn_probabilities: list[float]) -> Mock:
+    """Pipeline predicting these churn probabilities and the labels the 0.5 threshold makes of them."""
     pipeline = Mock(spec=Pipeline)
-    pipeline.predict.return_value = np.array(predictions)
+    probabilities = np.array(churn_probabilities)
+    pipeline.predict_proba.return_value = np.column_stack([1 - probabilities, probabilities])
+    pipeline.predict.return_value = (probabilities > 0.5).astype(int)
     return pipeline
 
 
 def test_evaluate_churn_model_scores_test_predictions():
-    pipeline = fixed_predictions([0, 1, 0, 0])
+    pipeline = fixed_predictions([0.1, 0.9, 0.2, 0.3])
     X_test = pd.DataFrame(index=range(4))
 
     metrics = evaluate_churn_model(pipeline, X_test, pd.Series([0, 1, 1, 0]))
 
     pipeline.predict.assert_called_once_with(X_test)
-    # 3 of 4 rows are right; churn precision 1/1 and recall 1/2 give F1 = 2/3.
+    pipeline.predict_proba.assert_called_once_with(X_test)
+    # Labels 0, 1, 0, 0: 3 of 4 rows are right; churn precision 1/1 and recall 1/2 give F1 = 2/3.
     assert metrics.accuracy == 0.75
     assert metrics.f1 == pytest.approx(2 / 3)
+    # Of the 4 churner and non-churner pairs, only the churner at 0.2 is ranked below a non-churner, at 0.3.
+    assert metrics.roc_auc == 0.75
 
 
 def test_evaluate_churn_model_gives_zero_f1_to_model_that_never_predicts_churn():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         metrics = evaluate_churn_model(
-            fixed_predictions([0, 0, 0, 0]), pd.DataFrame(index=range(4)), pd.Series([0, 1, 0, 0])
+            fixed_predictions([0.1, 0.4, 0.2, 0.3]), pd.DataFrame(index=range(4)), pd.Series([0, 1, 0, 0])
         )
 
-    assert metrics == TrainMetrics(accuracy=0.75, f1=0.0)
+    # No probability crosses 0.5, yet the churner gets the highest one: the ranking is perfect.
+    assert metrics == TrainMetrics(accuracy=0.75, f1=0.0, roc_auc=1.0)
 
 
 @pytest.fixture

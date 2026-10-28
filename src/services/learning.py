@@ -8,7 +8,7 @@ import pandas as pd
 from sklearn.base import ClassifierMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.exceptions import FitFailedWarning
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 from sklearn.model_selection import GridSearchCV, ParameterGrid, StratifiedKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
@@ -122,13 +122,19 @@ def describe_hyperparameters(pipeline: Pipeline, model_type: ModelType, requeste
 
 
 def evaluate_churn_model(pipeline: Pipeline, X_test: pd.DataFrame, y_test: pd.Series) -> TrainMetrics:
-    """Accuracy and F1 of the churn class on the test part."""
+    """Accuracy, F1 of the churn class and ROC-AUC of the churn probability on the test part.
+
+    The stratified split leaves both churn classes in the test part, which ROC-AUC needs.
+    """
     predictions = pipeline.predict(X_test)
+    # Classes are sorted, so the second column is the probability of churn = 1.
+    churn_probabilities = pipeline.predict_proba(X_test)[:, 1]
     # sklearn returns numpy scalars, and f1_score is annotated as an array too for average=None.
     return TrainMetrics(
         accuracy=float(accuracy_score(y_test, predictions)),
         # A model that never predicts churn has no precision to take; its F1 is 0, not a warning.
         f1=float(f1_score(y_test, predictions, zero_division=0)),
+        roc_auc=float(roc_auc_score(y_test, churn_probabilities)),
     )
 
 

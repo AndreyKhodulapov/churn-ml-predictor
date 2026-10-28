@@ -26,7 +26,7 @@ def make_model(make_customer):
         # Churn is decided by failed payments alone, so even a tiny model separates the customers.
         X = pd.DataFrame([make_customer(value).model_dump() for value in [0, 0, 0, 5, 5, 5]])
         pipeline = train_churn_model(X.reindex(columns=columns, fill_value=0), pd.Series([0, 0, 0, 1, 1, 1]))
-        return TrainedChurnModel(pipeline, TrainMetrics(accuracy=1.0, f1=1.0), "logreg", {})
+        return TrainedChurnModel(pipeline, TrainMetrics(accuracy=1.0, f1=1.0, roc_auc=1.0), "logreg", {})
 
     return make
 

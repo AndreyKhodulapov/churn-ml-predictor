@@ -76,6 +76,9 @@ def load_churn_model(path: Path) -> TrainedChurnModel:
         raise ModelLoadError(f"{path} holds {type(model).__name__}, not a churn model")
     # A file saved before a field was added unpickles without it and would fail only once the field is read.
     missing = [f.name for f in fields(TrainedChurnModel) if f.name not in vars(model)]
+    # The same holds for a metric added to TrainMetrics: pydantic restores the saved fields only.
+    if "metrics" not in missing:
+        missing += [f"metrics.{name}" for name in TrainMetrics.model_fields if name not in vars(model.metrics)]
     if missing:
         raise ModelLoadError(f"{path} holds a churn model of an older format without {', '.join(missing)}, retrain it")
     # A model saved before a feature was added, renamed or dropped loads fine and would fail only on /predict.
@@ -100,8 +103,9 @@ class ChurnModelStore:
         self.path = path
         self._model: TrainedChurnModel | None = None
         # /model/train runs in a thread pool: two trainings finishing together must not leave
-        # one model on disk and the other in memory.
-        self._lock = threading.Lock()
+        # one model on disk and the other in memory. Reentrant, so a caller can hold it around save() to make
+        # its own step after the save atomic with it.
+        self.lock = threading.RLock()
 
     @property
     def model(self) -> TrainedChurnModel | None:
@@ -109,7 +113,7 @@ class ChurnModelStore:
 
     def save(self, model: TrainedChurnModel) -> None:
         """Write the model to disk first and serve it only then, so a failed write keeps the previous one."""
-        with self._lock:
+        with self.lock:
             save_churn_model(model, self.path)
             self._model = model
 

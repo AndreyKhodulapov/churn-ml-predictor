@@ -20,6 +20,10 @@ class ModelLoadError(Exception):
     """The saved churn model file cannot be read or does not hold a churn model."""
 
 
+class HistoryLoadError(Exception):
+    """The saved training history file cannot be read or does not hold training records."""
+
+
 class ModelFeaturesMismatchError(Exception):
     """The served churn model was trained on other features than a prediction request carries.
 

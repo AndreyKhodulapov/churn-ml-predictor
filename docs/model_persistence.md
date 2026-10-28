@@ -24,7 +24,10 @@ disk, what is saved with it and what can break when it is loaded back.
 - Adding a field to the class does not break loading, but an old file comes
   back without the new attribute and fails only once it is read. The service
   checks at load that every field of `TrainedChurnModel` is present and
-  rejects an older file like a broken one.
+  rejects an older file like a broken one. The pydantic `TrainMetrics` inside
+  behaves the same way, and a missing metric would even be dropped from
+  `/model/status` silently, so its fields are checked too: a model saved
+  before `roc_auc` was added has to be retrained.
 - Loading can run arbitrary code: an object can tell pickle to call any
   function when it is rebuilt, `os.system` included. Only files the service
   wrote itself may be loaded, never one uploaded by a user.

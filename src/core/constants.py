@@ -20,9 +20,9 @@ MAIN_HYPERPARAMETERS: dict[ModelType, tuple[str, ...]] = {
     "random_forest": ("n_estimators", "max_depth", "min_samples_leaf", "max_features", "class_weight"),
 }
 
-# Metrics /model/tune can pick the best combination by: the ones /model/train reports, plus roc_auc, which scores
-# the predicted probabilities rather than the labels.
-TuningScoring = Literal["accuracy", "f1", "roc_auc"]
+# Metrics /model/train reports on the test part: /model/tune picks the best combination of a grid by one of them,
+# /model/metrics the best recorded training. roc_auc scores the predicted probabilities rather than the labels.
+ChurnMetric = Literal["accuracy", "f1", "roc_auc"]
 # Grids /model/tune searches when the client sends none. A forest fit costs about 6 logreg ones, so its grid leaves
 # n_estimators at the default: more trees only make the answer stabler and slower, they trade off no metric.
 DEFAULT_PARAM_GRIDS: dict[ModelType, dict[str, list[Any]]] = {
@@ -61,3 +61,8 @@ DATA_DIR = PROJECT_ROOT / "data"
 DATASET_PATH = DATA_DIR / "churn_dataset.csv"
 MODELS_DIR = PROJECT_ROOT / "models"
 MODEL_PATH = MODELS_DIR / "churn_model.joblib"
+HISTORY_PATH = MODELS_DIR / "training_history.json"
+# Records the history keeps: the oldest ones are dropped, so the file and every rewrite of it stay small.
+MAX_HISTORY_RECORDS = 100
+# Records /model/metrics lists when the client sends no limit.
+DEFAULT_HISTORY_LIMIT = 10

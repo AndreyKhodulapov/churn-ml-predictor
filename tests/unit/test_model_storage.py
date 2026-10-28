@@ -31,7 +31,7 @@ def X(customer_features) -> pd.DataFrame:
 def trained_model(X) -> TrainedChurnModel:
     return TrainedChurnModel(
         pipeline=train_churn_model(X, pd.Series([0, 0, 1, 1]), "logreg", {"C": 0.5, "class_weight": "balanced"}),
-        metrics=TrainMetrics(accuracy=0.75, f1=0.5),
+        metrics=TrainMetrics(accuracy=0.75, f1=0.5, roc_auc=0.8),
         model_type="logreg",
         hyperparameters={"C": 0.5, "class_weight": "balanced"},
         trained_at=datetime(2026, 10, 25, 12, 30, tzinfo=UTC),
@@ -66,7 +66,7 @@ def test_loaded_model_keeps_metrics_training_time_model_type_and_hyperparameters
 
     loaded = load_churn_model(model_path)
 
-    assert loaded.metrics == TrainMetrics(accuracy=0.75, f1=0.5)
+    assert loaded.metrics == TrainMetrics(accuracy=0.75, f1=0.5, roc_auc=0.8)
     assert loaded.trained_at == datetime(2026, 10, 25, 12, 30, tzinfo=UTC)
     assert loaded.model_type == "logreg"
     assert loaded.hyperparameters == {"C": 0.5, "class_weight": "balanced"}
@@ -83,9 +83,9 @@ def test_save_creates_missing_directory(trained_model, tmp_path):
 
 def test_save_replaces_previous_model_and_leaves_no_temporary_file(trained_model, model_path):
     save_churn_model(trained_model, model_path)
-    save_churn_model(replace(trained_model, metrics=TrainMetrics(accuracy=1.0, f1=1.0)), model_path)
+    save_churn_model(replace(trained_model, metrics=TrainMetrics(accuracy=1.0, f1=1.0, roc_auc=1.0)), model_path)
 
-    assert load_churn_model(model_path).metrics == TrainMetrics(accuracy=1.0, f1=1.0)
+    assert load_churn_model(model_path).metrics == TrainMetrics(accuracy=1.0, f1=1.0, roc_auc=1.0)
     assert list(model_path.parent.iterdir()) == [model_path]
 
 
@@ -116,6 +116,16 @@ def test_load_rejects_model_saved_before_model_type_and_hyperparameters(trained_
     joblib.dump(old_model, model_path)
 
     with pytest.raises(ModelLoadError, match="older format without model_type, hyperparameters, retrain it"):
+        load_churn_model(model_path)
+
+
+def test_load_rejects_model_saved_before_roc_auc(trained_model, model_path):
+    # Pydantic restores the saved fields only too: such metrics would lose roc_auc silently in /model/status.
+    old_metrics = trained_model.metrics.model_copy()
+    del old_metrics.__dict__["roc_auc"]
+    joblib.dump(replace(trained_model, metrics=old_metrics), model_path)
+
+    with pytest.raises(ModelLoadError, match="older format without metrics.roc_auc, retrain it"):
         load_churn_model(model_path)
 
 
@@ -159,7 +169,7 @@ def test_store_keeps_previous_model_when_write_fails(trained_model, model_path, 
 
     monkeypatch.setattr("src.services.model_storage.save_churn_model", failing_save)
     with pytest.raises(OSError):
-        store.save(replace(trained_model, metrics=TrainMetrics(accuracy=1.0, f1=1.0)))
+        store.save(replace(trained_model, metrics=TrainMetrics(accuracy=1.0, f1=1.0, roc_auc=1.0)))
 
     assert store.model is trained_model
 
@@ -205,7 +215,7 @@ def test_store_status_reports_served_model(trained_model, model_path):
     assert store.get_status() == ModelStatus(
         trained=True,
         trained_at=datetime(2026, 10, 25, 12, 30, tzinfo=UTC),
-        metrics=TrainMetrics(accuracy=0.75, f1=0.5),
+        metrics=TrainMetrics(accuracy=0.75, f1=0.5, roc_auc=0.8),
         model_type="logreg",
         hyperparameters={"C": 0.5, "l1_ratio": 0.0, "solver": "lbfgs", "max_iter": 100, "class_weight": "balanced"},
     )
