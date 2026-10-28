@@ -59,6 +59,10 @@ holds, how the history is stored and what it takes to compare configs by it.
 
 - The record is added after the model is saved and served. A training that
   fails is not recorded: it has no metrics to compare.
+- Saving and recording run under the lock of the model store, as one step.
+  With the lock of the history alone, two trainings finishing at once could
+  be served in one order and recorded in the other, and the latest record
+  would not be the served model.
 - If the record cannot be written, the training still answers `200` and the
   reason goes to the log. The new model is already served, and an error would
   make the client believe the training failed and retrain for nothing.

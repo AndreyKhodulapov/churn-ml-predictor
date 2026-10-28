@@ -1,4 +1,5 @@
 import logging
+import threading
 
 import pandas as pd
 import pytest
@@ -101,6 +102,24 @@ def test_failed_training_leaves_no_record(separable_split, store, history):
         train_and_save_churn_model(separable_split, TrainingConfigChurn(hyperparameters={"C": -1}), store, history)
 
     assert history.records() == recorded
+
+
+def test_records_the_training_while_no_other_one_can_be_served(separable_split, store, history, monkeypatch):
+    lock_free_while_recording = []
+    append = history.append
+
+    def checked_append(record):
+        # Another training finishing now runs in its own thread and must wait for the store.
+        attempt = threading.Thread(target=lambda: lock_free_while_recording.append(store.lock.acquire(blocking=False)))
+        attempt.start()
+        attempt.join()
+        append(record)
+
+    monkeypatch.setattr(history, "append", checked_append)
+    train_and_save_churn_model(separable_split, TrainingConfigChurn(), store, history)
+
+    assert lock_free_while_recording == [False]
+    assert len(history.records()) == 1
 
 
 def test_serves_the_model_when_its_record_cannot_be_written(separable_split, store, history, monkeypatch, caplog):

@@ -78,7 +78,7 @@ class DatasetProcessor:
 @lru_cache
 def get_dataset() -> DatasetProcessor:
     """Load the default dataset once and reuse the processor for every request."""
-    # The path is looked up on the call rather than taken from the default argument, so tests can point it elsewhere.
+    # Passed explicitly: a default argument is bound once at import, the module constant is read on every call.
     processor = DatasetProcessor(DATASET_PATH)
     processor.load()
     return processor

@@ -40,7 +40,7 @@ class TrainingConfigChurn(BaseSchema):
 
     @field_validator("hyperparameters")
     @classmethod
-    def restore_class_weight_labels(cls, hyperparameters: dict[str, Any]) -> dict[str, Any]:
+    def restore_labels(cls, hyperparameters: dict[str, Any]) -> dict[str, Any]:
         return restore_class_weight_labels(hyperparameters)
 
 
@@ -81,7 +81,7 @@ class TrainingRecord(BaseSchema):
     # The history file is JSON, so class_weight keys come back from it as strings.
     @field_validator("hyperparameters")
     @classmethod
-    def restore_class_weight_labels(cls, hyperparameters: dict[str, Any]) -> dict[str, Any]:
+    def restore_labels(cls, hyperparameters: dict[str, Any]) -> dict[str, Any]:
         return restore_class_weight_labels(hyperparameters)
 
 
@@ -112,7 +112,7 @@ class TuningConfigChurn(BaseSchema):
 
     @field_validator("param_grid")
     @classmethod
-    def restore_class_weight_labels(cls, param_grid: dict[str, list[Any]] | None) -> dict[str, list[Any]] | None:
+    def restore_labels(cls, param_grid: dict[str, list[Any]] | None) -> dict[str, list[Any]] | None:
         if param_grid is None or "class_weight" not in param_grid:
             return param_grid
         return {**param_grid, "class_weight": [restore_class_labels(value) for value in param_grid["class_weight"]]}

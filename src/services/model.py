@@ -20,12 +20,15 @@ def train_and_save_churn_model(
     pipeline = train_churn_model(split.X_train, split.y_train, config.model_type, config.hyperparameters)
     metrics = evaluate_churn_model(pipeline, split.X_test, split.y_test)
     model = TrainedChurnModel(pipeline, metrics, config.model_type, config.hyperparameters)
-    store.save(model)
-    try:
-        history.append(describe_training(model))
-    # The new model is already served: failing the request would make the client believe the training failed.
-    except OSError:
-        logger.exception("Churn model trained at %s is served but not recorded in the history", model.trained_at)
+    # Two trainings finishing together are recorded in the order they are served, so the latest record is always
+    # the served model.
+    with store.lock:
+        store.save(model)
+        try:
+            history.append(describe_training(model))
+        # The new model is already served: failing the request would make the client believe the training failed.
+        except OSError:
+            logger.exception("Churn model trained at %s is served but not recorded in the history", model.trained_at)
     return metrics
 
 

@@ -103,8 +103,9 @@ class ChurnModelStore:
         self.path = path
         self._model: TrainedChurnModel | None = None
         # /model/train runs in a thread pool: two trainings finishing together must not leave
-        # one model on disk and the other in memory.
-        self._lock = threading.Lock()
+        # one model on disk and the other in memory. Reentrant, so a caller can hold it around save() to make
+        # its own step after the save atomic with it.
+        self.lock = threading.RLock()
 
     @property
     def model(self) -> TrainedChurnModel | None:
@@ -112,7 +113,7 @@ class ChurnModelStore:
 
     def save(self, model: TrainedChurnModel) -> None:
         """Write the model to disk first and serve it only then, so a failed write keeps the previous one."""
-        with self._lock:
+        with self.lock:
             save_churn_model(model, self.path)
             self._model = model
 
